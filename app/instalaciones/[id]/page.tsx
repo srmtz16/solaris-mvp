@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import { AlertTriangle, Gauge, PlugZap, SunMedium } from "lucide-react";
-import { DailyGenerationChart, MonthlyGenerationChart } from "@/components/charts";
+import { ElectricalAnalysisPanel } from "@/components/electrical-analysis-panel";
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { dailyGeneration, installations, monthlyGeneration } from "@/data/mock-data";
+import { detectedPatterns, electricalData, inverters } from "@/data/electrical-data";
+import { installations } from "@/data/mock-data";
 
 export default async function InstallationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,26 +32,13 @@ export default async function InstallationDetailPage({ params }: { params: Promi
         <MetricCard title="Performance Ratio" value={`${installation.performanceRatio.toFixed(1)}%`} detail="Objetivo comercial 85%" icon={Gauge} tone={installation.performanceRatio >= 85 ? "green" : "yellow"} />
         <MetricCard title="Alertas" value={`${installation.alerts.length}`} detail="Eventos operativos activos" icon={AlertTriangle} tone={installation.alerts.length ? "red" : "green"} />
       </section>
-      <section className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Grafica diaria</CardTitle>
-            <CardDescription>Curva de generacion simulada.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DailyGenerationChart data={dailyGeneration} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Grafica mensual</CardTitle>
-            <CardDescription>Tendencia de produccion del sitio.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MonthlyGenerationChart data={monthlyGeneration} />
-          </CardContent>
-        </Card>
-      </section>
+      <ElectricalAnalysisPanel
+        initialPlantId={installation.id}
+        plants={installations}
+        inverters={inverters}
+        electricalData={electricalData}
+        patterns={detectedPatterns}
+      />
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>

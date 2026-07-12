@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, FileJson, FileUp, Library, Save, ShieldCheck, Upload } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { AlertTriangle, Download, FileJson, FileSpreadsheet, FileUp, Library, Save, ShieldCheck, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,9 @@ const scopeStyles: Record<TemplateScope, string> = {
   private: "bg-slate-100 text-slate-700",
   custom: "bg-yellow-50 text-yellow-700",
 };
+
+const dataFileAccept =
+  ".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 type ParsedWorkbook = {
   fileName: string;
@@ -125,6 +128,8 @@ function FieldInput({
 }
 
 export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplates: TranslatorTemplate[] }) {
+  const dataInputRef = useRef<HTMLInputElement | null>(null);
+  const templateInputRef = useRef<HTMLInputElement | null>(null);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
   const [activeSheetName, setActiveSheetName] = useState("");
   const [templates, setTemplates] = useState<TranslatorTemplate[]>(officialTemplates);
@@ -138,6 +143,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [exportType, setExportType] = useState("Exportacion de inversores");
   const [version, setVersion] = useState("1.0.0");
   const [scope, setScope] = useState<TemplateScope>("custom");
+  const [fileError, setFileError] = useState("");
 
   const activeSheet = workbook?.sheets.find((sheet) => sheet.name === activeSheetName) ?? workbook?.sheets[0] ?? null;
   const selectedTemplate = templates.find((template) => template.templateId === selectedTemplateId) ?? matches[0]?.template;
@@ -155,7 +161,17 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     [templates],
   );
 
+  function isSupportedDataFile(file: File) {
+    return /\.(csv|xls|xlsx)$/i.test(file.name);
+  }
+
   async function handleFile(file: File) {
+    if (!isSupportedDataFile(file)) {
+      setFileError("Selecciona un archivo de datos .csv, .xls o .xlsx. Los JSON son solo para plantillas guardadas.");
+      return;
+    }
+
+    setFileError("");
     const parsed = await parseFile(file);
     const sheet = parsed.sheets[0];
     const ranked = rankTemplates(templates, sheet);
@@ -250,36 +266,86 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
         <Card>
           <CardHeader>
             <CardTitle>Entrada</CardTitle>
-            <CardDescription>XLS, XLSX o CSV. No se guarda el archivo completo.</CardDescription>
+            <CardDescription>Primero carga el archivo de datos. El JSON es solo para plantillas guardadas.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center">
-              <FileUp className="size-8 text-blue-600" />
-              <span className="text-sm font-medium">Subir archivo</span>
-              <span className="text-xs text-muted-foreground">Se analizan hojas y encabezados localmente en el navegador.</span>
-              <input
-                type="file"
-                accept=".csv,.xls,.xlsx"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleFile(file);
+            <div
+              className="flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-blue-300 bg-blue-50/60 p-4 text-center transition-colors hover:bg-blue-50"
+              role="button"
+              tabIndex={0}
+              onClick={() => dataInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") dataInputRef.current?.click();
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.currentTarget.classList.add("border-blue-600");
+              }}
+              onDragLeave={(event) => {
+                event.currentTarget.classList.remove("border-blue-600");
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.currentTarget.classList.remove("border-blue-600");
+                const file = event.dataTransfer.files?.[0];
+                if (file) void handleFile(file);
+              }}
+            >
+              <FileSpreadsheet className="size-9 text-blue-600" />
+              <span className="text-sm font-semibold">Archivo de datos XLS, XLSX o CSV</span>
+              <span className="text-xs text-muted-foreground">Arrastra tu exportacion aqui o selecciona el archivo desde tu equipo.</span>
+              <Button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dataInputRef.current?.click();
                 }}
-              />
-            </label>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">
+              >
+                <FileUp className="size-4" />
+                Seleccionar XLS/XLSX/CSV
+              </Button>
+            </div>
+            <input
+              ref={dataInputRef}
+              type="file"
+              accept={dataFileAccept}
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            {fileError ? (
+              <div className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                <AlertTriangle className="mt-0.5 size-4" />
+                {fileError}
+              </div>
+            ) : null}
+            {workbook ? (
+              <div className="rounded-md border border-green-100 bg-green-50 p-3 text-sm text-green-700">
+                Archivo cargado: <span className="font-semibold">{workbook.fileName}</span>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => templateInputRef.current?.click()}
+              className="flex items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
               <Upload className="size-4" />
-              Cargar plantilla JSON
-              <input
-                type="file"
-                accept="application/json,.json"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void loadTemplateFile(file);
-                }}
-              />
-            </label>
+              Cargar plantilla JSON guardada (opcional)
+            </button>
+            <input
+              ref={templateInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void loadTemplateFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
           </CardContent>
         </Card>
       </section>

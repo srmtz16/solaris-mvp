@@ -1,0 +1,103 @@
+{
+  "templateId": "solaris-official-growatt-max-csv-v1",
+  "name": "Growatt MAX CSV Telemetry",
+  "manufacturer": "Growatt",
+  "model": "MAX",
+  "fileType": "csv",
+  "sheetName": "CSV",
+  "headerRow": 1,
+  "dateFormat": "dd/MM/yyyy HH:mm",
+  "timezone": "America/Mexico_City",
+  "version": "1.0.0",
+  "confidence": 0.9,
+  "formatSignature": "sheet:csv|cols:8|headers:date-time,serial,pv-voltage,pv-current,input-power,grid-voltage,grid-current,output-power",
+  "scope": "official",
+  "exportType": "Inverter telemetry",
+  "anonymizedSample": {
+    "Date Time": "10/07/2026 12:00",
+    "Serial": "GRT-XXXX",
+    "Output Power": 98.2
+  },
+  "mappings": [
+    {
+      "sourceHeader": "Date Time",
+      "normalizedSourceHeader": "date-time",
+      "targetField": "timestamp",
+      "sourceUnit": "",
+      "targetUnit": "ISO8601",
+      "transform": "parseDate",
+      "required": true,
+      "confidence": 0.96
+    },
+    {
+      "sourceHeader": "Serial",
+      "normalizedSourceHeader": "serial",
+      "targetField": "inverterId",
+      "sourceUnit": "",
+      "targetUnit": "",
+      "transform": "trim",
+      "required": true,
+      "confidence": 0.94
+    },
+    {
+      "sourceHeader": "PV Voltage",
+      "normalizedSourceHeader": "pv-voltage",
+      "targetField": "voltageDc",
+      "sourceUnit": "V",
+      "targetUnit": "V",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.91
+    },
+    {
+      "sourceHeader": "PV Current",
+      "normalizedSourceHeader": "pv-current",
+      "targetField": "currentDc",
+      "sourceUnit": "A",
+      "targetUnit": "A",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.91
+    },
+    {
+      "sourceHeader": "Input Power",
+      "normalizedSourceHeader": "input-power",
+      "targetField": "powerDc",
+      "sourceUnit": "W",
+      "targetUnit": "kW",
+      "transform": "wToKw",
+      "required": true,
+      "confidence": 0.89
+    },
+    {
+      "sourceHeader": "Grid Voltage",
+      "normalizedSourceHeader": "grid-voltage",
+      "targetField": "voltageAcL1",
+      "sourceUnit": "V",
+      "targetUnit": "V",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.84
+    },
+    {
+      "sourceHeader": "Grid Current",
+      "normalizedSourceHeader": "grid-current",
+      "targetField": "currentAcL1",
+      "sourceUnit": "A",
+      "targetUnit": "A",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.84
+    },
+    {
+      "sourceHeader": "Output Power",
+      "normalizedSourceHeader": "output-power",
+      "targetField": "activePowerKw",
+      "sourceUnit": "W",
+      "targetUnit": "kW",
+      "transform": "wToKw",
+      "required": true,
+      "confidence": 0.9
+    }
+  ]
+}

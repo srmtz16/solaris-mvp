@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SOLARIS Data Translator Mapping Template",
+  "type": "object",
+  "required": [
+    "templateId",
+    "name",
+    "manufacturer",
+    "model",
+    "fileType",
+    "sheetName",
+    "headerRow",
+    "dateFormat",
+    "timezone",
+    "version",
+    "confidence",
+    "formatSignature",
+    "mappings"
+  ],
+  "properties": {
+    "templateId": { "type": "string" },
+    "name": { "type": "string" },
+    "manufacturer": { "type": "string" },
+    "model": { "type": "string" },
+    "fileType": { "enum": ["csv", "xls", "xlsx"] },
+    "sheetName": { "type": "string" },
+    "headerRow": { "type": "integer", "minimum": 1 },
+    "dateFormat": { "type": "string" },
+    "timezone": { "type": "string" },
+    "version": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "formatSignature": { "type": "string" },
+    "scope": { "enum": ["official", "private", "custom"] },
+    "exportType": { "type": "string" },
+    "anonymizedSample": { "type": "object" },
+    "mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "sourceHeader",
+          "normalizedSourceHeader",
+          "targetField",
+          "sourceUnit",
+          "targetUnit",
+          "transform",
+          "required",
+          "confidence"
+        ]
+      }
+    }
+  }
+}

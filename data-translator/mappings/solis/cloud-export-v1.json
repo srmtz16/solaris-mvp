@@ -1,0 +1,103 @@
+{
+  "templateId": "solaris-official-solis-cloud-v1",
+  "name": "SolisCloud Inverter Export",
+  "manufacturer": "Solis",
+  "model": "SolisCloud",
+  "fileType": "xlsx",
+  "sheetName": "Inverter",
+  "headerRow": 2,
+  "dateFormat": "MM/dd/yyyy HH:mm",
+  "timezone": "America/Mexico_City",
+  "version": "1.0.0",
+  "confidence": 0.88,
+  "formatSignature": "sheet:inverter|cols:8|headers:timestamp,inverter-sn,dc-voltage,dc-current,dc-power,ac-voltage,ac-current,power",
+  "scope": "official",
+  "exportType": "Inverter telemetry",
+  "anonymizedSample": {
+    "Timestamp": "07/10/2026 12:00",
+    "Inverter SN": "SOLIS-XXXX",
+    "Power": 87.1
+  },
+  "mappings": [
+    {
+      "sourceHeader": "Timestamp",
+      "normalizedSourceHeader": "timestamp",
+      "targetField": "timestamp",
+      "sourceUnit": "",
+      "targetUnit": "ISO8601",
+      "transform": "parseDate",
+      "required": true,
+      "confidence": 0.96
+    },
+    {
+      "sourceHeader": "Inverter SN",
+      "normalizedSourceHeader": "inverter-sn",
+      "targetField": "inverterId",
+      "sourceUnit": "",
+      "targetUnit": "",
+      "transform": "trim",
+      "required": true,
+      "confidence": 0.92
+    },
+    {
+      "sourceHeader": "DC Voltage",
+      "normalizedSourceHeader": "dc-voltage",
+      "targetField": "voltageDc",
+      "sourceUnit": "V",
+      "targetUnit": "V",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.91
+    },
+    {
+      "sourceHeader": "DC Current",
+      "normalizedSourceHeader": "dc-current",
+      "targetField": "currentDc",
+      "sourceUnit": "A",
+      "targetUnit": "A",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.91
+    },
+    {
+      "sourceHeader": "DC Power",
+      "normalizedSourceHeader": "dc-power",
+      "targetField": "powerDc",
+      "sourceUnit": "kW",
+      "targetUnit": "kW",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.9
+    },
+    {
+      "sourceHeader": "AC Voltage",
+      "normalizedSourceHeader": "ac-voltage",
+      "targetField": "voltageAcL1",
+      "sourceUnit": "V",
+      "targetUnit": "V",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.86
+    },
+    {
+      "sourceHeader": "AC Current",
+      "normalizedSourceHeader": "ac-current",
+      "targetField": "currentAcL1",
+      "sourceUnit": "A",
+      "targetUnit": "A",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.86
+    },
+    {
+      "sourceHeader": "Power",
+      "normalizedSourceHeader": "power",
+      "targetField": "activePowerKw",
+      "sourceUnit": "kW",
+      "targetUnit": "kW",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.9
+    }
+  ]
+}

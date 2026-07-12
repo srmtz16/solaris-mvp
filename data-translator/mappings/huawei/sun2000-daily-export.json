@@ -1,0 +1,113 @@
+{
+  "templateId": "solaris-official-huawei-sun2000-daily-v1",
+  "name": "Huawei SUN2000 Daily Plant Export",
+  "manufacturer": "Huawei",
+  "model": "SUN2000",
+  "fileType": "xlsx",
+  "sheetName": "Device Data",
+  "headerRow": 1,
+  "dateFormat": "yyyy-MM-dd HH:mm:ss",
+  "timezone": "America/Mexico_City",
+  "version": "1.0.0",
+  "confidence": 0.94,
+  "formatSignature": "sheet:device-data|cols:9|headers:time,device-name,pv1-voltage,pv1-current,total-dc-power,phase-a-voltage,phase-a-current,active-power,temperature",
+  "scope": "official",
+  "exportType": "Inverter telemetry",
+  "anonymizedSample": {
+    "Time": "2026-07-10 12:00:00",
+    "Device Name": "INV-XX",
+    "Active Power(kW)": 125.4
+  },
+  "mappings": [
+    {
+      "sourceHeader": "Time",
+      "normalizedSourceHeader": "time",
+      "targetField": "timestamp",
+      "sourceUnit": "",
+      "targetUnit": "ISO8601",
+      "transform": "parseDate",
+      "required": true,
+      "confidence": 0.98
+    },
+    {
+      "sourceHeader": "Device Name",
+      "normalizedSourceHeader": "device-name",
+      "targetField": "inverterId",
+      "sourceUnit": "",
+      "targetUnit": "",
+      "transform": "trim",
+      "required": true,
+      "confidence": 0.96
+    },
+    {
+      "sourceHeader": "PV1 Voltage(V)",
+      "normalizedSourceHeader": "pv1-voltage",
+      "targetField": "voltageDc",
+      "sourceUnit": "V",
+      "targetUnit": "V",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.94
+    },
+    {
+      "sourceHeader": "PV1 Current(A)",
+      "normalizedSourceHeader": "pv1-current",
+      "targetField": "currentDc",
+      "sourceUnit": "A",
+      "targetUnit": "A",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.94
+    },
+    {
+      "sourceHeader": "Total DC Power(kW)",
+      "normalizedSourceHeader": "total-dc-power",
+      "targetField": "powerDc",
+      "sourceUnit": "kW",
+      "targetUnit": "kW",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.92
+    },
+    {
+      "sourceHeader": "Phase A Voltage(V)",
+      "normalizedSourceHeader": "phase-a-voltage",
+      "targetField": "voltageAcL1",
+      "sourceUnit": "V",
+      "targetUnit": "V",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.9
+    },
+    {
+      "sourceHeader": "Phase A Current(A)",
+      "normalizedSourceHeader": "phase-a-current",
+      "targetField": "currentAcL1",
+      "sourceUnit": "A",
+      "targetUnit": "A",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.9
+    },
+    {
+      "sourceHeader": "Active Power(kW)",
+      "normalizedSourceHeader": "active-power",
+      "targetField": "activePowerKw",
+      "sourceUnit": "kW",
+      "targetUnit": "kW",
+      "transform": "number",
+      "required": true,
+      "confidence": 0.96
+    },
+    {
+      "sourceHeader": "Temperature(C)",
+      "normalizedSourceHeader": "temperature",
+      "targetField": "inverterTemperatureC",
+      "sourceUnit": "C",
+      "targetUnit": "C",
+      "transform": "number",
+      "required": false,
+      "confidence": 0.86
+    }
+  ]
+}

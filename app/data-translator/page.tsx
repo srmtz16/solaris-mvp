@@ -1,27 +1,34 @@
 import { ArrowDown, Check, FileUp, Factory, FileSpreadsheet, ShieldCheck } from "lucide-react";
+import { DataTranslatorWorkbench } from "@/components/data-translator-workbench";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import growattTemplate from "@/data-translator/mappings/growatt/max-export.csv.json";
+import huaweiTemplate from "@/data-translator/mappings/huawei/sun2000-daily-export.json";
+import solisTemplate from "@/data-translator/mappings/solis/cloud-export-v1.json";
+import type { TranslatorTemplate } from "@/types/data-translator";
 
 const steps = [
   { title: "Subir archivo", icon: FileUp, detail: "CSV, XLSX o exportacion del fabricante" },
-  { title: "Detectar fabricante", icon: Factory, detail: "Identificacion automatica simulada" },
-  { title: "Normalizar informacion", icon: ShieldCheck, detail: "Campos tecnicos homologados" },
-  { title: "Generar formato SOLARIS", icon: FileSpreadsheet, detail: "Salida lista para monitoreo" },
+  { title: "Detectar fabricante", icon: Factory, detail: "Firma por hojas, encabezados y columnas" },
+  { title: "Normalizar informacion", icon: ShieldCheck, detail: "Correccion manual de asignaciones" },
+  { title: "Generar formato SOLARIS", icon: FileSpreadsheet, detail: "Plantilla JSON reusable" },
 ];
 
 const brands = ["Huawei", "Growatt", "SMA", "Solis", "GoodWe", "Fronius"];
+
+const officialTemplates = [huaweiTemplate, growattTemplate, solisTemplate] as TranslatorTemplate[];
 
 export default function DataTranslatorPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-normal">Data Translator</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Interfaz conceptual para homologar informacion de multiples fabricantes.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Biblioteca de plantillas para homologar exportaciones solares sin backend.</p>
       </div>
       <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardHeader>
             <CardTitle>Flujo de normalizacion</CardTitle>
-            <CardDescription>Procesamiento visual simulado, sin carga ni transformacion real de archivos.</CardDescription>
+            <CardDescription>Lectura local del archivo, deteccion de encabezados y aplicacion de la mejor plantilla.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
@@ -52,7 +59,7 @@ export default function DataTranslatorPage() {
         <Card>
           <CardHeader>
             <CardTitle>Compatibilidad</CardTitle>
-            <CardDescription>Fabricantes considerados para el MVP.</CardDescription>
+            <CardDescription>Fabricantes considerados para la biblioteca MVP.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {brands.map((brand) => (
@@ -64,6 +71,7 @@ export default function DataTranslatorPage() {
           </CardContent>
         </Card>
       </section>
+      <DataTranslatorWorkbench officialTemplates={officialTemplates} />
     </div>
   );
 }

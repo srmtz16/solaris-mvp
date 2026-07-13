@@ -2,6 +2,49 @@ export type TemplateScope = "official" | "private" | "custom";
 
 export type FileType = "csv" | "xls" | "xlsx";
 
+export type SemanticFamily =
+  | "identification"
+  | "energy"
+  | "power"
+  | "voltage"
+  | "current"
+  | "power_quality"
+  | "environment"
+  | "operation"
+  | "unknown";
+
+export type ElectricalSide = "dc" | "ac" | "grid" | "none";
+
+export type SemanticPriority = "critical" | "important" | "complementary" | "optional" | "ignore";
+
+export type SemanticStatus = "auto_detected" | "needs_review" | "confirmed" | "unassigned" | "ignored";
+
+export type SemanticVariable = {
+  sourceHeader: string;
+  normalizedHeader: string;
+  displayName: string;
+  fieldId: string;
+  family: SemanticFamily;
+  category?: string;
+  electricalSide?: ElectricalSide;
+  entity?: string;
+  measurementType?: string;
+  index?: number;
+  phase?: string;
+  phaseFrom?: string;
+  phaseTo?: string;
+  sourceUnit?: string;
+  standardUnit?: string;
+  transform: string;
+  priority: SemanticPriority;
+  confidence: number;
+  required: boolean;
+  uses: string[];
+  description?: string;
+  patternId?: string;
+  status: SemanticStatus;
+};
+
 export type TranslatorMapping = {
   sourceHeader: string;
   normalizedSourceHeader: string;
@@ -11,6 +54,7 @@ export type TranslatorMapping = {
   transform: string;
   required: boolean;
   confidence: number;
+  semantic?: SemanticVariable;
 };
 
 export type TranslatorTemplate = {
@@ -50,4 +94,5 @@ export type TemplateMatch = {
 
 export type ManualMappingDraft = TranslatorMapping & {
   id: string;
+  semantic: SemanticVariable;
 };

@@ -46,7 +46,70 @@
           "transform",
           "required",
           "confidence"
-        ]
+        ],
+        "properties": {
+          "sourceHeader": { "type": "string" },
+          "normalizedSourceHeader": { "type": "string" },
+          "targetField": { "type": "string" },
+          "sourceUnit": { "type": "string" },
+          "targetUnit": { "type": "string" },
+          "transform": { "type": "string" },
+          "required": { "type": "boolean" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "semantic": {
+            "type": "object",
+            "required": [
+              "sourceHeader",
+              "normalizedHeader",
+              "displayName",
+              "fieldId",
+              "family",
+              "transform",
+              "priority",
+              "confidence",
+              "required",
+              "uses",
+              "status"
+            ],
+            "properties": {
+              "sourceHeader": { "type": "string" },
+              "normalizedHeader": { "type": "string" },
+              "displayName": { "type": "string" },
+              "fieldId": { "type": "string" },
+              "family": {
+                "enum": [
+                  "identification",
+                  "energy",
+                  "power",
+                  "voltage",
+                  "current",
+                  "power_quality",
+                  "environment",
+                  "operation",
+                  "unknown"
+                ]
+              },
+              "category": { "type": "string" },
+              "electricalSide": { "enum": ["dc", "ac", "grid", "none"] },
+              "entity": { "type": "string" },
+              "measurementType": { "type": "string" },
+              "index": { "type": "integer" },
+              "phase": { "type": "string" },
+              "phaseFrom": { "type": "string" },
+              "phaseTo": { "type": "string" },
+              "sourceUnit": { "type": "string" },
+              "standardUnit": { "type": "string" },
+              "transform": { "type": "string" },
+              "priority": { "enum": ["critical", "important", "complementary", "optional", "ignore"] },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+              "required": { "type": "boolean" },
+              "uses": { "type": "array", "items": { "type": "string" } },
+              "description": { "type": "string" },
+              "patternId": { "type": "string" },
+              "status": { "enum": ["auto_detected", "needs_review", "confirmed", "unassigned", "ignored"] }
+            }
+          }
+        }
       }
     }
   }

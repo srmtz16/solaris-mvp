@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Download, FileJson, FileSpreadsheet, FileUp, Library, Save, ShieldCheck, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +14,14 @@ import {
   downloadJson,
   inferFileType,
   rankTemplates,
-  targetFields,
+  transformLabels,
   transformOptions,
 } from "@/lib/data-translator";
 import { cn } from "@/lib/utils";
+import { detailForSemantic, semanticFromField } from "@/data-translator/parser/semantic-classifier";
+import { familyLabels, familyOptions } from "@/data-translator/ontology/families";
+import { fieldDefinitions } from "@/data-translator/ontology/fields";
+import { priorityLabels, statusLabels } from "@/data-translator/ontology/priorities";
 import type {
   FileType,
   ManualMappingDraft,
@@ -144,6 +148,8 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [version, setVersion] = useState("1.0.0");
   const [scope, setScope] = useState<TemplateScope>("custom");
   const [fileError, setFileError] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [advancedId, setAdvancedId] = useState("");
 
   const activeSheet = workbook?.sheets.find((sheet) => sheet.name === activeSheetName) ?? workbook?.sheets[0] ?? null;
   const selectedTemplate = templates.find((template) => template.templateId === selectedTemplateId) ?? matches[0]?.template;
@@ -203,8 +209,34 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setMappings(applyTemplate(template, activeSheet));
   }
 
-  function updateMapping(index: number, patch: Partial<ManualMappingDraft>) {
-    setMappings((current) => current.map((mapping, mappingIndex) => (mappingIndex === index ? { ...mapping, ...patch } : mapping)));
+  function updateSemantic(index: number, patch: Partial<ManualMappingDraft["semantic"]>) {
+    setMappings((current) =>
+      current.map((mapping, mappingIndex) => {
+        if (mappingIndex !== index) return mapping;
+        const semantic = { ...mapping.semantic, ...patch };
+        return {
+          ...mapping,
+          targetField: semantic.fieldId,
+          sourceUnit: semantic.sourceUnit ?? "",
+          targetUnit: semantic.standardUnit ?? "",
+          transform: semantic.transform,
+          required: semantic.required,
+          confidence: semantic.confidence,
+          semantic,
+        };
+      }),
+    );
+  }
+
+  function changeField(index: number, fieldId: string) {
+    const current = mappings[index];
+    const semantic = semanticFromField(current.sourceHeader, fieldId, {
+      sourceUnit: current.semantic.sourceUnit,
+      targetUnit: current.semantic.standardUnit,
+      confidence: Math.max(current.semantic.confidence, 0.78),
+      required: current.semantic.required,
+    });
+    updateSemantic(index, { ...semantic, status: "confirmed" });
   }
 
   function saveTemplate() {
@@ -405,8 +437,8 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>Asignaciones corregibles</CardTitle>
-                <CardDescription>La plantilla con mayor coincidencia se aplica automaticamente y puede corregirse manualmente.</CardDescription>
+                <CardTitle>Significado semantico corregible</CardTitle>
+                <CardDescription>Las variables se clasifican por familia, lado electrico, entidad, fase o indice sin crear campos individuales.</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" disabled={!selectedTemplate} onClick={() => selectedTemplate && downloadJson(`${selectedTemplate.templateId}.json`, selectedTemplate)}>
@@ -434,79 +466,169 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
             ) : null}
 
             <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[920px] text-sm">
+              <table className="w-full min-w-[1120px] text-sm">
                 <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left">Encabezado fuente</th>
-                    <th className="px-3 py-2 text-left">Normalizado</th>
-                    <th className="px-3 py-2 text-left">Campo SOLARIS</th>
+                    <th className="px-3 py-2 text-left">Significado detectado</th>
+                    <th className="px-3 py-2 text-left">Categoria</th>
+                    <th className="px-3 py-2 text-left">Detalle</th>
                     <th className="px-3 py-2 text-left">Unidad</th>
-                    <th className="px-3 py-2 text-left">Transform</th>
-                    <th className="px-3 py-2 text-left">Req.</th>
+                    <th className="px-3 py-2 text-left">Importancia</th>
                     <th className="px-3 py-2 text-left">Conf.</th>
+                    <th className="px-3 py-2 text-left">Estado</th>
+                    <th className="px-3 py-2 text-left">Accion</th>
                   </tr>
                 </thead>
                 <tbody>
                   {mappings.map((mapping, index) => (
-                    <tr key={mapping.id} className="border-t border-border">
-                      <td className="px-3 py-2 font-medium">{mapping.sourceHeader}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{mapping.normalizedSourceHeader}</td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={mapping.targetField}
-                          onChange={(event) => updateMapping(index, { targetField: event.target.value })}
-                          className="h-8 w-full rounded-md border border-border bg-card px-2"
-                        >
-                          {targetFields.map((field) => (
-                            <option key={field} value={field}>
-                              {field}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-2">
-                          <input
-                            value={mapping.sourceUnit}
-                            onChange={(event) => updateMapping(index, { sourceUnit: event.target.value })}
-                            className="h-8 w-20 rounded-md border border-border bg-card px-2"
-                            placeholder="Origen"
-                          />
-                          <input
-                            value={mapping.targetUnit}
-                            onChange={(event) => updateMapping(index, { targetUnit: event.target.value })}
-                            className="h-8 w-20 rounded-md border border-border bg-card px-2"
-                            placeholder="Destino"
-                          />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={mapping.transform}
-                          onChange={(event) => updateMapping(index, { transform: event.target.value })}
-                          className="h-8 rounded-md border border-border bg-card px-2"
-                        >
-                          {transformOptions.map((transform) => (
-                            <option key={transform} value={transform}>
-                              {transform}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={mapping.required}
-                          onChange={(event) => updateMapping(index, { required: event.target.checked })}
-                          className="size-4"
-                        />
-                      </td>
-                      <td className="px-3 py-2 font-mono">{Math.round(mapping.confidence * 100)}%</td>
-                    </tr>
+                    <Fragment key={mapping.id}>
+                      <tr className="border-t border-border align-top">
+                        <td className="px-3 py-3 font-medium">{mapping.sourceHeader}</td>
+                        <td className="px-3 py-3">
+                          <div className="font-medium">{mapping.semantic.displayName}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{mapping.semantic.description}</div>
+                        </td>
+                        <td className="px-3 py-3">{familyLabels[mapping.semantic.family]}</td>
+                        <td className="px-3 py-3 text-muted-foreground">{detailForSemantic(mapping.semantic) || "Requiere revision"}</td>
+                        <td className="px-3 py-3">
+                          <div className="text-xs text-muted-foreground">Detectada: {mapping.semantic.sourceUnit || "-"}</div>
+                          <div className="text-xs text-muted-foreground">Estandar: {mapping.semantic.standardUnit || "-"}</div>
+                          <div className="mt-1 text-xs font-medium text-foreground">{transformLabels[mapping.semantic.transform] ?? "Conversion automatica"}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge variant={mapping.semantic.priority === "critical" ? "destructive" : mapping.semantic.priority === "important" ? "default" : "secondary"}>
+                            {priorityLabels[mapping.semantic.priority]}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-3 font-mono">{Math.round(mapping.semantic.confidence * 100)}%</td>
+                        <td className="px-3 py-3">{statusLabels[mapping.semantic.status]}</td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setEditingId(editingId === mapping.id ? "" : mapping.id)}>
+                              Editar
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setAdvancedId(advancedId === mapping.id ? "" : mapping.id)}>
+                              Avanzado
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {editingId === mapping.id ? (
+                        <tr className="border-t border-border bg-muted/30">
+                          <td colSpan={9} className="px-3 py-4">
+                            <div className="grid gap-3 md:grid-cols-4">
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Familia
+                                <select value={mapping.semantic.family} onChange={(event) => updateSemantic(index, { family: event.target.value as ManualMappingDraft["semantic"]["family"], status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                  {familyOptions.map((family) => (
+                                    <option key={family.value} value={family.value}>{family.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Campo SOLARIS
+                                <select value={mapping.semantic.fieldId} onChange={(event) => changeField(index, event.target.value)} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                  <option value="unassigned">Sin asignar</option>
+                                  {fieldDefinitions.map((field) => (
+                                    <option key={field.fieldId} value={field.fieldId}>{field.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Lado electrico
+                                <select value={mapping.semantic.electricalSide ?? "none"} onChange={(event) => updateSemantic(index, { electricalSide: event.target.value as ManualMappingDraft["semantic"]["electricalSide"], status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                  <option value="none">No aplica</option>
+                                  <option value="dc">DC</option>
+                                  <option value="ac">AC</option>
+                                  <option value="grid">Red</option>
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Entidad
+                                <input value={mapping.semantic.entity ?? ""} onChange={(event) => updateSemantic(index, { entity: event.target.value, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground" placeholder="mppt, pv_input, grid" />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Tipo de medicion
+                                <input value={mapping.semantic.measurementType ?? ""} onChange={(event) => updateSemantic(index, { measurementType: event.target.value, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground" placeholder="channel, phase, cumulative" />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Indice
+                                <input type="number" value={mapping.semantic.index ?? ""} onChange={(event) => updateSemantic(index, { index: event.target.value ? Number(event.target.value) : undefined, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground" />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Fase
+                                <input value={mapping.semantic.phase ?? ""} onChange={(event) => updateSemantic(index, { phase: event.target.value, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground" />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Importancia
+                                <select value={mapping.semantic.priority} onChange={(event) => updateSemantic(index, { priority: event.target.value as ManualMappingDraft["semantic"]["priority"], status: event.target.value === "ignore" ? "ignored" : "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                  {Object.entries(priorityLabels).map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Unidad detectada
+                                <input value={mapping.semantic.sourceUnit ?? ""} onChange={(event) => updateSemantic(index, { sourceUnit: event.target.value, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground" />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Unidad estandar
+                                <input value={mapping.semantic.standardUnit ?? ""} onChange={(event) => updateSemantic(index, { standardUnit: event.target.value, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground" />
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Conversion
+                                <select value={mapping.semantic.transform} onChange={(event) => updateSemantic(index, { transform: event.target.value, status: "confirmed" })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                  {transformOptions.map((transform) => (
+                                    <option key={transform} value={transform}>{transformLabels[transform] ?? transform}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                Estado
+                                <select value={mapping.semantic.status} onChange={(event) => updateSemantic(index, { status: event.target.value as ManualMappingDraft["semantic"]["status"] })} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                  {Object.entries(statusLabels).map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <div className="mt-4 rounded-md bg-card p-3 text-sm">
+                              <div className="font-semibold">Usada en</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {mapping.semantic.uses.map((use) => (
+                                  <span key={use} className="rounded-md bg-muted px-2 py-1 text-xs">{use}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {advancedId === mapping.id ? (
+                        <tr className="border-t border-border bg-slate-50">
+                          <td colSpan={9} className="px-3 py-4">
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <div className="rounded-md border border-border bg-card p-3">
+                                <div className="text-xs text-muted-foreground">fieldId</div>
+                                <div className="font-mono text-sm">{mapping.semantic.fieldId}</div>
+                              </div>
+                              <div className="rounded-md border border-border bg-card p-3">
+                                <div className="text-xs text-muted-foreground">patternId</div>
+                                <div className="font-mono text-sm">{mapping.semantic.patternId ?? "-"}</div>
+                              </div>
+                              <div className="rounded-md border border-border bg-card p-3">
+                                <div className="text-xs text-muted-foreground">transform tecnico</div>
+                                <div className="font-mono text-sm">{mapping.semantic.transform}</div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   ))}
                   {!mappings.length ? (
                     <tr>
-                      <td className="px-3 py-8 text-center text-muted-foreground" colSpan={7}>
+                      <td className="px-3 py-8 text-center text-muted-foreground" colSpan={9}>
                         No hay asignaciones todavia.
                       </td>
                     </tr>

@@ -7,6 +7,7 @@ import type {
   TranslatorMapping,
   TranslatorTemplate,
 } from "@/types/data-translator";
+import { classifyHeader, mappingFromSemantic, semanticFromField } from "@/data-translator/parser/semantic-classifier";
 
 export const targetFields = [
   "timestamp",
@@ -30,7 +31,19 @@ export const targetFields = [
   "ignore",
 ];
 
-export const transformOptions = ["none", "trim", "number", "parseDate", "wToKw", "kwToW", "percentToDecimal"];
+export const transformOptions = ["none", "trim", "number", "parseDate", "wToKw", "kwToW", "whToKwh", "varToKvar", "percentToDecimal"];
+
+export const transformLabels: Record<string, string> = {
+  none: "Sin conversion",
+  trim: "Limpiar texto",
+  number: "Convertir a numero",
+  parseDate: "Normalizar fecha",
+  wToKw: "Convertir W a kW",
+  kwToW: "Convertir kW a W",
+  whToKwh: "Convertir Wh a kWh",
+  varToKvar: "Convertir var a kVAr",
+  percentToDecimal: "Convertir porcentaje",
+};
 
 export function normalizeHeader(header: string) {
   return header
@@ -129,7 +142,7 @@ export function rankTemplates(templates: TranslatorTemplate[], sheet: SheetPrevi
 }
 
 export function applyTemplate(template: TranslatorTemplate, sheet: SheetPreview): ManualMappingDraft[] {
-  return sheet.headers.map((header, index) => {
+  return sheet.headers.map((header, index): ManualMappingDraft => {
     const normalized = normalizeHeader(header);
     const best = template.mappings
       .map((mapping) => ({
@@ -138,16 +151,33 @@ export function applyTemplate(template: TranslatorTemplate, sheet: SheetPreview)
       }))
       .sort((first, second) => second.score - first.score)[0];
 
+    if (best && best.score >= 0.55) {
+      const semantic =
+        best.mapping.semantic ??
+        semanticFromField(header, best.mapping.targetField, {
+          ...best.mapping,
+          confidence: Math.max(best.mapping.confidence, Number(best.score.toFixed(2))),
+        });
+      return {
+        ...best.mapping,
+        id: `${normalized || "column"}-${index}`,
+        sourceHeader: header,
+        normalizedSourceHeader: normalized,
+        targetField: semantic.fieldId,
+        sourceUnit: semantic.sourceUnit ?? best.mapping.sourceUnit,
+        targetUnit: semantic.standardUnit ?? best.mapping.targetUnit,
+        transform: semantic.transform,
+        required: semantic.required,
+        confidence: Math.max(best.mapping.confidence, Number(best.score.toFixed(2))),
+        semantic: { ...semantic, sourceHeader: header, normalizedHeader: normalized },
+      };
+    }
+
+    const semantic = classifyHeader(header, index, sheet.rows[sheet.headerRow + 1]?.[index]);
     return {
+      ...mappingFromSemantic(semantic),
       id: `${normalized || "column"}-${index}`,
-      sourceHeader: header,
-      normalizedSourceHeader: normalized,
-      targetField: best && best.score >= 0.55 ? best.mapping.targetField : "ignore",
-      sourceUnit: best && best.score >= 0.55 ? best.mapping.sourceUnit : "",
-      targetUnit: best && best.score >= 0.55 ? best.mapping.targetUnit : "",
-      transform: best && best.score >= 0.55 ? best.mapping.transform : "none",
-      required: Boolean(best && best.score >= 0.75 && best.mapping.required),
-      confidence: best ? Number(best.score.toFixed(2)) : 0,
+      semantic,
     };
   });
 }
@@ -180,16 +210,17 @@ export function createTemplateFromMappings({
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   const activeMappings: TranslatorMapping[] = mappings
-    .filter((mapping) => mapping.targetField !== "ignore")
+    .filter((mapping) => mapping.semantic.status !== "ignored" && mapping.targetField !== "ignore" && mapping.targetField !== "unassigned")
     .map((mapping) => ({
       sourceHeader: mapping.sourceHeader,
       normalizedSourceHeader: normalizeHeader(mapping.sourceHeader),
-      targetField: mapping.targetField,
-      sourceUnit: mapping.sourceUnit,
-      targetUnit: mapping.targetUnit,
-      transform: mapping.transform,
-      required: mapping.required,
-      confidence: Number(mapping.confidence.toFixed(2)),
+      targetField: mapping.semantic.fieldId,
+      sourceUnit: mapping.semantic.sourceUnit ?? "",
+      targetUnit: mapping.semantic.standardUnit ?? "",
+      transform: mapping.semantic.transform,
+      required: mapping.semantic.required,
+      confidence: Number(mapping.semantic.confidence.toFixed(2)),
+      semantic: mapping.semantic,
     }));
 
   return {

@@ -1,0 +1,2 @@
+Serial number,Time,Status,EacToday(kWh),EacTotal(kWh),Vpv1(V),Ipv1(A),Ppv1(W),Vpv14(V),Ipv14(A),Ppv14(W),Ppv(W),EpvToday(kWh),EpvTotal(kWh),TimeTotal(H),VacRS(V),VacST(V),VacTR(V),IacR(A),IacS(A),IacT(A),Pac(W),Qac(var),Frequency(Hz),PF,Temperature(C)
+JNM7DY902V,2026-05-01 12:00:00,Normal,182.4,56120.8,702.1,12.4,8706,699.3,11.1,7762,125400,188.2,57990.4,8120.5,398.2,399.1,397.8,181.2,179.4,182.6,121800,1820,60.01,0.99,54.3

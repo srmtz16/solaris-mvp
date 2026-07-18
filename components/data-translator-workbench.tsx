@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, FileJson, FileSpreadsheet, FileUp, Library, Save, ShieldCheck, Upload } from "lucide-react";
+import { AlertTriangle, Download, FileJson, FileSpreadsheet, FileUp, Library, RefreshCw, Save, ShieldCheck, Undo2, Upload, Wand2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,17 @@ import { detailForSemantic, semanticFromField } from "@/data-translator/parser/s
 import { familyLabels, familyOptions } from "@/data-translator/ontology/families";
 import { fieldDefinitions } from "@/data-translator/ontology/fields";
 import { priorityLabels, statusLabels } from "@/data-translator/ontology/priorities";
+import { applyParameterizedRule, createAuditEntry, proposeParameterizedRule, rescanWithRules } from "@/data-translator/rules/progressive-rules";
 import type {
   FileType,
   ManualMappingDraft,
+  ParameterizedRule,
+  RuleProposal,
+  RuleScope,
   SheetPreview,
   TemplateMatch,
   TemplateScope,
+  TranslatorAuditEntry,
   TranslatorTemplate,
 } from "@/types/data-translator";
 
@@ -150,6 +155,13 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [fileError, setFileError] = useState("");
   const [editingId, setEditingId] = useState("");
   const [advancedId, setAdvancedId] = useState("");
+  const [learnedRules, setLearnedRules] = useState<ParameterizedRule[]>([]);
+  const [ruleProposal, setRuleProposal] = useState<RuleProposal | null>(null);
+  const [selectedRuleHeaders, setSelectedRuleHeaders] = useState<string[]>([]);
+  const [ruleScope, setRuleScope] = useState<RuleScope>("manufacturer");
+  const [saveRuleToLibrary, setSaveRuleToLibrary] = useState(true);
+  const [overwriteConfirmed, setOverwriteConfirmed] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<TranslatorAuditEntry[]>([]);
 
   const activeSheet = workbook?.sheets.find((sheet) => sheet.name === activeSheetName) ?? workbook?.sheets[0] ?? null;
   const selectedTemplate = templates.find((template) => template.templateId === selectedTemplateId) ?? matches[0]?.template;
@@ -186,7 +198,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setActiveSheetName(sheet.name);
     setMatches(ranked);
     setSelectedTemplateId(best?.templateId ?? "");
-    setMappings(best ? applyTemplate(best, sheet) : []);
+    setMappings(best ? rescanWithRules(applyTemplate(best, sheet), learnedRules) : []);
   }
 
   function handleSheetChange(sheetName: string) {
@@ -198,7 +210,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setActiveSheetName(sheetName);
     setMatches(ranked);
     setSelectedTemplateId(best?.templateId ?? "");
-    setMappings(best ? applyTemplate(best, sheet) : []);
+    setMappings(best ? rescanWithRules(applyTemplate(best, sheet), learnedRules) : []);
   }
 
   function handleTemplateSelect(templateId: string) {
@@ -206,7 +218,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     const template = templates.find((item) => item.templateId === templateId);
     if (!template) return;
     setSelectedTemplateId(templateId);
-    setMappings(applyTemplate(template, activeSheet));
+    setMappings(rescanWithRules(applyTemplate(template, activeSheet), learnedRules));
   }
 
   function updateSemantic(index: number, patch: Partial<ManualMappingDraft["semantic"]>) {
@@ -239,6 +251,96 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     updateSemantic(index, { ...semantic, status: "confirmed" });
   }
 
+  function openRuleProposal(index: number) {
+    const updatedMappings = mappings.map((mapping, mappingIndex) =>
+      mappingIndex === index ? { ...mapping, semantic: { ...mapping.semantic, status: "confirmed" as const } } : mapping,
+    );
+    setMappings(updatedMappings);
+    const proposal = proposeParameterizedRule({
+      mapping: updatedMappings[index],
+      mappingIndex: index,
+      mappings: updatedMappings,
+      manufacturer,
+      model,
+      scope: ruleScope,
+    });
+
+    if (!proposal) {
+      setFileError("No se encontro un indice numerico claro para proponer una regla parametrizada.");
+      return;
+    }
+
+    setFileError("");
+    setRuleProposal(proposal);
+    setSelectedRuleHeaders(proposal.matches.filter((match) => match.action === "apply").map((match) => match.sourceHeader));
+    setAuditEntries((current) => [
+      createAuditEntry({
+        action: "rule_proposed",
+        baseHeader: proposal.baseHeader,
+        rule: proposal.rule,
+        previousValues: [mappings[index]],
+        nextValues: [updatedMappings[index]],
+      }),
+      ...current,
+    ]);
+  }
+
+  function applyRuleProposal(headers?: string[]) {
+    if (!ruleProposal) return;
+    const result = applyParameterizedRule({
+      mappings,
+      rule: ruleProposal.rule,
+      selectedHeaders: headers,
+      allowOverwriteConfirmed: overwriteConfirmed,
+    });
+    const activeRules = saveRuleToLibrary ? [ruleProposal.rule, ...learnedRules] : learnedRules;
+    setMappings(rescanWithRules(result.mappings, activeRules));
+    if (saveRuleToLibrary) setLearnedRules((current) => [ruleProposal.rule, ...current]);
+    setAuditEntries((current) => [
+      createAuditEntry({
+        action: "batch_apply",
+        baseHeader: ruleProposal.baseHeader,
+        rule: ruleProposal.rule,
+        previousValues: result.previousValues,
+        nextValues: result.nextValues,
+      }),
+      ...current,
+    ]);
+    setRuleProposal(null);
+  }
+
+  function saveOnlyRule() {
+    if (!ruleProposal) return;
+    setLearnedRules((current) => [ruleProposal.rule, ...current]);
+    setAuditEntries((current) => [
+      createAuditEntry({
+        action: "rule_saved",
+        baseHeader: ruleProposal.baseHeader,
+        rule: ruleProposal.rule,
+        previousValues: [],
+        nextValues: [],
+      }),
+      ...current,
+    ]);
+    setRuleProposal(null);
+  }
+
+  function undoLastBatch() {
+    const last = auditEntries.find((entry) => entry.action === "batch_apply");
+    if (!last) return;
+    const previousByHeader = new Map(last.previousValues.map((mapping) => [mapping.sourceHeader, mapping]));
+    setMappings((current) => current.map((mapping) => previousByHeader.get(mapping.sourceHeader) ?? mapping));
+    setAuditEntries((current) => [
+      createAuditEntry({
+        action: "undo",
+        baseHeader: last.baseHeader,
+        previousValues: last.nextValues,
+        nextValues: last.previousValues,
+      }),
+      ...current,
+    ]);
+  }
+
   function saveTemplate() {
     if (!workbook || !activeSheet) return;
     const template = createTemplateFromMappings({
@@ -252,6 +354,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
       sheet: activeSheet,
       sheetNames: workbook.sheetNames,
       mappings,
+      parameterizedRules: learnedRules,
     });
     setTemplates((current) => [template, ...current]);
     setSelectedTemplateId(template.templateId);
@@ -263,8 +366,9 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     const text = await file.text();
     const template = JSON.parse(text) as TranslatorTemplate;
     setTemplates((current) => [{ ...template, scope: template.scope ?? "custom" }, ...current]);
+    if (template.parameterizedRules?.length) setLearnedRules((current) => [...template.parameterizedRules!, ...current]);
     setSelectedTemplateId(template.templateId);
-    if (activeSheet) setMappings(applyTemplate(template, activeSheet));
+    if (activeSheet) setMappings(rescanWithRules(applyTemplate(template, activeSheet), [...(template.parameterizedRules ?? []), ...learnedRules]));
   }
 
   return (
@@ -441,6 +545,10 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 <CardDescription>Las variables se clasifican por familia, lado electrico, entidad, fase o indice sin crear campos individuales.</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button variant="outline" disabled={!auditEntries.some((entry) => entry.action === "batch_apply")} onClick={undoLastBatch}>
+                  <Undo2 className="size-4" />
+                  Deshacer ultimo lote
+                </Button>
                 <Button variant="outline" disabled={!selectedTemplate} onClick={() => selectedTemplate && downloadJson(`${selectedTemplate.templateId}.json`, selectedTemplate)}>
                   <Download className="size-4" />
                   Descargar plantilla
@@ -594,7 +702,40 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                               </label>
                             </div>
                             <div className="mt-4 rounded-md bg-card p-3 text-sm">
-                              <div className="font-semibold">Usada en</div>
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold">Aprendizaje progresivo</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">Guarda esta correccion y propone una regla para variables indexadas similares.</div>
+                                </div>
+                                <Button onClick={() => openRuleProposal(index)}>
+                                  <Wand2 className="size-4" />
+                                  Guardar, actualizar y reconocer similares
+                                </Button>
+                              </div>
+                              <div className="mt-3 grid gap-3 md:grid-cols-4">
+                                <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                  Alcance de regla
+                                  <select value={ruleScope} onChange={(event) => setRuleScope(event.target.value as RuleScope)} className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground">
+                                    <option value="current_file">Solo archivo actual</option>
+                                    <option value="manufacturer">Fabricante</option>
+                                    <option value="manufacturer_model">Fabricante y modelo</option>
+                                    <option value="global">Global</option>
+                                  </select>
+                                </label>
+                                <label className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                                  <input type="checkbox" checked={saveRuleToLibrary} onChange={(event) => setSaveRuleToLibrary(event.target.checked)} />
+                                  Guardar regla en biblioteca local
+                                </label>
+                                <label className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                                  <input type="checkbox" defaultChecked readOnly />
+                                  Extraer indice automaticamente
+                                </label>
+                                <label className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                                  <input type="checkbox" checked={overwriteConfirmed} onChange={(event) => setOverwriteConfirmed(event.target.checked)} />
+                                  Permitir sobrescribir confirmadas
+                                </label>
+                              </div>
+                              <div className="mt-4 font-semibold">Usada en</div>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {mapping.semantic.uses.map((use) => (
                                   <span key={use} className="rounded-md bg-muted px-2 py-1 text-xs">{use}</span>
@@ -639,6 +780,127 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
           </CardContent>
         </Card>
       </section>
+
+      {ruleProposal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
+            <div className="border-b border-border p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold">Nueva regla de familia detectada</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Revisa las variables afectadas antes de aplicar. No se hacen cambios silenciosos.
+                  </p>
+                </div>
+                <Button variant="outline" onClick={() => setRuleProposal(null)}>Cancelar</Button>
+              </div>
+            </div>
+            <div className="grid gap-4 p-5 lg:grid-cols-3">
+              <div className="rounded-lg border border-border p-4">
+                <div className="text-xs text-muted-foreground">Variable base</div>
+                <div className="mt-1 font-semibold">{ruleProposal.baseHeader}</div>
+                <div className="mt-3 text-xs text-muted-foreground">Patron visual</div>
+                <div className="mt-1 font-mono text-sm">{ruleProposal.rule.displayPattern}</div>
+              </div>
+              <div className="rounded-lg border border-border p-4 lg:col-span-2">
+                <div className="text-xs text-muted-foreground">Expresion regular</div>
+                <div className="mt-1 break-all rounded-md bg-muted p-2 font-mono text-sm">{ruleProposal.rule.sourcePattern}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <Badge>{ruleProposal.matches.length} coincidencias</Badge>
+                  <Badge variant="secondary">{Math.round(ruleProposal.confidence * 100)}% confianza</Badge>
+                  <Badge variant={ruleProposal.conflicts.length ? "destructive" : "secondary"}>{ruleProposal.conflicts.length} conflictos</Badge>
+                  <Badge variant="secondary">Alcance: {ruleProposal.rule.scope}</Badge>
+                </div>
+              </div>
+              <div className="rounded-lg border border-border p-4 lg:col-span-3">
+                <div className="font-semibold">Configuracion que se copiara</div>
+                <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+                  <span>Campo: {ruleProposal.copiedConfiguration.displayName}</span>
+                  <span>Familia: {familyLabels[ruleProposal.copiedConfiguration.family]}</span>
+                  <span>Entidad: {ruleProposal.copiedConfiguration.entity ?? "-"}</span>
+                  <span>Unidad: {ruleProposal.copiedConfiguration.sourceUnit ?? "-"} a {ruleProposal.copiedConfiguration.standardUnit ?? "-"}</span>
+                  <span>Conversion: {transformLabels[ruleProposal.copiedConfiguration.transform] ?? ruleProposal.copiedConfiguration.transform}</span>
+                  <span>Importancia: {priorityLabels[ruleProposal.copiedConfiguration.priority]}</span>
+                  <span>Tipo: {ruleProposal.copiedConfiguration.measurementType ?? "-"}</span>
+                  <span>Estado: confirmado por usuario</span>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-border lg:col-span-3">
+                <table className="w-full min-w-[880px] text-sm">
+                  <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Aplicar</th>
+                      <th className="px-3 py-2 text-left">Variable original</th>
+                      <th className="px-3 py-2 text-left">Campo sugerido</th>
+                      <th className="px-3 py-2 text-left">Entidad</th>
+                      <th className="px-3 py-2 text-left">Indice</th>
+                      <th className="px-3 py-2 text-left">Unidad</th>
+                      <th className="px-3 py-2 text-left">Confianza</th>
+                      <th className="px-3 py-2 text-left">Accion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ruleProposal.matches.map((match) => (
+                      <tr key={match.sourceHeader} className="border-t border-border">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            disabled={match.action === "conflict" && !overwriteConfirmed}
+                            checked={selectedRuleHeaders.includes(match.sourceHeader)}
+                            onChange={(event) =>
+                              setSelectedRuleHeaders((current) =>
+                                event.target.checked ? [...current, match.sourceHeader] : current.filter((header) => header !== match.sourceHeader),
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-medium">{match.sourceHeader}</td>
+                        <td className="px-3 py-2">{match.displayName}</td>
+                        <td className="px-3 py-2">{match.entity ?? "-"}</td>
+                        <td className="px-3 py-2 font-mono">{match.index}</td>
+                        <td className="px-3 py-2">{match.unit}</td>
+                        <td className="px-3 py-2">{Math.round(match.confidence * 100)}%</td>
+                        <td className="px-3 py-2">
+                          {match.action === "conflict" ? <span className="text-red-600">{match.conflictReason}</span> : "Aplicar"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {ruleProposal.relatedSuggestions.length ? (
+                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 lg:col-span-3">
+                  <div className="font-semibold">Familias hermanas sugeridas</div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    {ruleProposal.relatedSuggestions.map((suggestion) => (
+                      <div key={suggestion.id} className="rounded-md bg-card p-3 text-sm">
+                        <div className="font-medium">{suggestion.label}</div>
+                        <div className="mt-1 font-mono text-xs text-muted-foreground">{suggestion.displayPattern}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{suggestion.matches.length} coincidencias pendientes de confirmacion.</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2 lg:col-span-3">
+                <Button onClick={() => applyRuleProposal()}>
+                  <RefreshCw className="size-4" />
+                  Aplicar a todas
+                </Button>
+                <Button variant="outline" onClick={() => applyRuleProposal(selectedRuleHeaders)}>
+                  Aplicar seleccionadas
+                </Button>
+                <Button variant="outline" onClick={saveOnlyRule}>
+                  Guardar solo la regla
+                </Button>
+                <Button variant="ghost" onClick={() => setRuleProposal(null)}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {saveOpen ? (
         <Card className="border-blue-200">
@@ -712,6 +974,33 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
               La vista previa aparecera despues de subir un archivo.
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Auditoria de aprendizaje</CardTitle>
+          <CardDescription>Registro local de reglas propuestas, aplicaciones masivas, reglas guardadas y deshacer.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">{learnedRules.length} reglas aprendidas</Badge>
+            <Badge variant="secondary">{auditEntries.length} eventos auditados</Badge>
+          </div>
+          <div className="mt-4 grid gap-2">
+            {auditEntries.slice(0, 5).map((entry) => (
+              <div key={entry.id} className="rounded-md border border-border p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">{entry.action.replaceAll("_", " ")}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString("es-MX")}</span>
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  Base: {entry.baseHeader} · Afectadas: {entry.affectedHeaders.length ? entry.affectedHeaders.join(", ") : "ninguna"}
+                </div>
+              </div>
+            ))}
+            {!auditEntries.length ? <div className="text-sm text-muted-foreground">Aun no hay acciones de aprendizaje registradas.</div> : null}
+          </div>
         </CardContent>
       </Card>
 

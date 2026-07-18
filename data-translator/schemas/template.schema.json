@@ -33,6 +33,54 @@
     "scope": { "enum": ["official", "private", "custom"] },
     "exportType": { "type": "string" },
     "anonymizedSample": { "type": "object" },
+    "parameterizedRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "manufacturer",
+          "sourcePattern",
+          "displayPattern",
+          "targetField",
+          "family",
+          "indexCaptureGroup",
+          "detectedUnit",
+          "standardUnit",
+          "conversion",
+          "importance",
+          "status",
+          "scope",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "manufacturer": { "type": "string" },
+          "modelScope": { "type": ["string", "null"] },
+          "sourcePattern": { "type": "string" },
+          "displayPattern": { "type": "string" },
+          "targetField": { "type": "string" },
+          "family": { "type": "string" },
+          "electricalSide": { "enum": ["dc", "ac", "grid", "none"] },
+          "entity": { "type": "string" },
+          "indexCaptureGroup": { "type": "integer" },
+          "detectedUnit": { "type": "string" },
+          "standardUnit": { "type": "string" },
+          "conversion": { "type": "string" },
+          "importance": { "enum": ["critical", "important", "complementary", "optional", "ignore"] },
+          "measurementType": { "type": "string" },
+          "status": { "enum": ["draft", "validated", "suggested"] },
+          "scope": { "enum": ["current_file", "manufacturer", "manufacturer_model", "global"] },
+          "createdBy": { "enum": ["system", "user", "ai"] },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      }
+    },
     "mappings": {
       "type": "array",
       "items": {

@@ -8,6 +8,8 @@ import type {
   TranslatorTemplate,
 } from "@/types/data-translator";
 import { classifyHeader, mappingFromSemantic, semanticFromField } from "@/data-translator/parser/semantic-classifier";
+import { profileColumns } from "@/data-translator/parser/data-profiler";
+import { applyParameterizedRule } from "@/data-translator/rules/progressive-rules";
 
 export const targetFields = [
   "timestamp",
@@ -86,12 +88,14 @@ export function buildSheetPreview(name: string, rows: unknown[][]): SheetPreview
   const stringRows = rows.map((row) => row.map((cell) => String(cell ?? "").trim()));
   const headerRow = locateHeaderRow(stringRows);
   const headers = (stringRows[headerRow] ?? []).filter(Boolean);
+  const dataRows = stringRows.slice(headerRow + 1);
   return {
     name,
     rows: stringRows.slice(0, 8),
     headerRow,
     headers,
     normalizedHeaders: headers.map(normalizeHeader),
+    columnProfiles: profileColumns(headers, dataRows),
   };
 }
 
@@ -142,7 +146,7 @@ export function rankTemplates(templates: TranslatorTemplate[], sheet: SheetPrevi
 }
 
 export function applyTemplate(template: TranslatorTemplate, sheet: SheetPreview): ManualMappingDraft[] {
-  return sheet.headers.map((header, index): ManualMappingDraft => {
+  const templateMappings = sheet.headers.map((header, index): ManualMappingDraft => {
     const normalized = normalizeHeader(header);
     const best = template.mappings
       .map((mapping) => ({
@@ -173,13 +177,32 @@ export function applyTemplate(template: TranslatorTemplate, sheet: SheetPreview)
       };
     }
 
+    const profile = sheet.columnProfiles?.[index];
     const semantic = classifyHeader(header, index, sheet.rows[sheet.headerRow + 1]?.[index]);
+    const profiledSemantic = profile
+      ? {
+          ...semantic,
+          sourceUnit: semantic.sourceUnit || profile.detectedUnit,
+          index: semantic.index ?? profile.possibleIndex,
+          family: semantic.family === "unknown" && profile.candidateFamily ? profile.candidateFamily : semantic.family,
+          measurementType: semantic.measurementType ?? (profile.possibleCumulative ? "cumulative" : profile.detectedTypes.includes("instantaneous") ? "instantaneous" : undefined),
+          inferenceReasons: [
+            ...(semantic.inferenceReasons ?? []),
+            `Tipo detectado: ${profile.detectedTypes.join(", ")}`,
+            profile.possibleCumulative ? "Comportamiento mayormente acumulativo" : "Comportamiento instantaneo o no monotono",
+          ],
+        }
+      : semantic;
     return {
-      ...mappingFromSemantic(semantic),
+      ...mappingFromSemantic(profiledSemantic),
       id: `${normalized || "column"}-${index}`,
-      semantic,
+      semantic: profiledSemantic,
     };
   });
+  return (template.parameterizedRules ?? []).reduce(
+    (current, rule) => applyParameterizedRule({ mappings: current, rule, allowOverwriteConfirmed: false }).mappings,
+    templateMappings,
+  );
 }
 
 export function createTemplateFromMappings({
@@ -193,6 +216,7 @@ export function createTemplateFromMappings({
   sheet,
   sheetNames,
   mappings,
+  parameterizedRules = [],
 }: {
   name: string;
   manufacturer: string;
@@ -204,6 +228,7 @@ export function createTemplateFromMappings({
   sheet: SheetPreview;
   sheetNames: string[];
   mappings: ManualMappingDraft[];
+  parameterizedRules?: TranslatorTemplate["parameterizedRules"];
 }): TranslatorTemplate {
   const safeId = `${manufacturer}-${model}-${name}-${version}`
     .toLowerCase()
@@ -240,6 +265,7 @@ export function createTemplateFromMappings({
     exportType,
     anonymizedSample: Object.fromEntries(sheet.headers.slice(0, 6).map((header) => [header, "<anon>"])),
     mappings: activeMappings,
+    parameterizedRules,
   };
 }
 

@@ -24,8 +24,11 @@ export function priorityForField(fieldId: string): SemanticPriority {
     [
       "dc_input_power",
       "dc_power",
+      "power_max",
       "mppt_voltage",
       "mppt_current",
+      "voltage_max",
+      "voltage_min",
       "ac_phase_voltage",
       "ac_line_voltage",
       "ac_phase_current",

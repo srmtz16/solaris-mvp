@@ -4,6 +4,7 @@ import { priorityForField } from "@/data-translator/ontology/priorities";
 import { usesForField } from "@/data-translator/ontology/uses";
 import { compactHeader, extractUnit, normalizeSemanticHeader, transformForUnit } from "@/data-translator/parser/header-parser";
 import { matchSemanticPattern } from "@/data-translator/parser/pattern-matcher";
+import { matchSemanticAlias } from "@/data-translator/aliases/semantic-aliases";
 
 const legacyFieldAliases: Record<string, string> = {
   inverterId: "inverter_id",
@@ -82,6 +83,9 @@ export function classifyHeader(sourceHeader: string, position?: number, sampleVa
     const sampleBonus = sampleValue && /\d/.test(sampleValue) && ["power", "voltage", "current", "energy"].includes(pattern.family) ? 0.01 : 0;
     return { ...pattern, confidence: Math.min(0.99, Number((pattern.confidence + unitBonus + positionBonus + sampleBonus).toFixed(2))) };
   }
+
+  const alias = matchSemanticAlias(sourceHeader);
+  if (alias) return alias;
 
   const compact = compactHeader(sourceHeader);
   const direct: Record<string, string> = {

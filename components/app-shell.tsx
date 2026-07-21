@@ -35,7 +35,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
 
   const sidebar = (
-    <aside className="flex h-full w-72 flex-col bg-slate-950 px-4 py-5 text-white">
+    <aside className="flex h-full w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col bg-slate-950 px-4 py-5 text-white">
       <div className="mb-8 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3" onClick={() => setOpen(false)}>
           <div className="flex size-10 items-center justify-center rounded-lg bg-yellow-300 text-slate-950">
@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <div className="fixed inset-y-0 left-0 z-30 hidden lg:block">{sidebar}</div>
       {open ? (
         <div className="fixed inset-0 z-40 lg:hidden">
@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="relative h-full">{sidebar}</div>
         </div>
       ) : null}
-      <div className="lg:pl-72">
+      <div className="min-w-0 lg:pl-72">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur md:px-8">
           <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setOpen(true)} aria-label="Abrir menu">
             <Menu className="size-4" />
@@ -97,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Sistema normal</span>
           </div>
         </header>
-        <main className="px-4 py-6 md:px-8">{children}</main>
+        <main className="min-w-0 overflow-x-hidden px-4 py-6 md:px-8">{children}</main>
       </div>
     </div>
   );

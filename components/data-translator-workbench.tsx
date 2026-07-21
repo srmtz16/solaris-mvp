@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, FileJson, FileSpreadsheet, FileUp, Library, RefreshCw, Save, ShieldCheck, Undo2, Upload, Wand2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Download, FileJson, FileSpreadsheet, FileUp, Library, RefreshCw, Save, ShieldCheck, Undo2, Upload, Wand2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,35 @@ type ParsedWorkbook = {
   sheetNames: string[];
   sheets: SheetPreview[];
 };
+
+type SheetRole = "RAW" | "PROCESSED" | "ANALYSIS" | "UNKNOWN";
+
+type TranslatorTab = "summary" | "sheets" | "raw" | "solaris" | "mapping" | "explore" | "template";
+
+const tabLabels: Record<TranslatorTab, string> = {
+  summary: "Resumen",
+  sheets: "Hojas",
+  raw: "Variables RAW",
+  solaris: "Variables SOLARIS",
+  mapping: "Mapeo",
+  explore: "Explorar datos",
+  template: "Plantilla",
+};
+
+function inferSheetRole(sheetName: string): SheetRole {
+  const name = sheetName.toLowerCase();
+  if (name.includes("analisis") || name.includes("anÃ¡lisis")) return "ANALYSIS";
+  if (name.includes("(2)") || name.includes("processed") || name.includes("proces") || name.includes("clean") || name.includes("limp")) return "PROCESSED";
+  if (name.includes("raw") || name.includes("historical data")) return "RAW";
+  return "UNKNOWN";
+}
+
+function roleBadgeClass(role: SheetRole) {
+  if (role === "RAW") return "bg-primary/10 text-primary";
+  if (role === "PROCESSED") return "bg-success/10 text-success";
+  if (role === "ANALYSIS") return "bg-warning/10 text-warning";
+  return "bg-muted text-muted-foreground";
+}
 
 function parseRowsFromSheet(sheet: XLSX.WorkSheet) {
   return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, blankrows: false });
@@ -156,6 +185,9 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [fileError, setFileError] = useState("");
   const [editingId, setEditingId] = useState("");
   const [advancedId, setAdvancedId] = useState("");
+  const [activeTab, setActiveTab] = useState<TranslatorTab>("summary");
+  const [selectedMappingId, setSelectedMappingId] = useState("");
+  const [sheetRoles, setSheetRoles] = useState<Record<string, SheetRole>>({});
   const [learnedRules, setLearnedRules] = useState<ParameterizedRule[]>([]);
   const [ruleProposal, setRuleProposal] = useState<RuleProposal | null>(null);
   const [selectedRuleHeaders, setSelectedRuleHeaders] = useState<string[]>([]);
@@ -167,6 +199,19 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const activeSheet = workbook?.sheets.find((sheet) => sheet.name === activeSheetName) ?? workbook?.sheets[0] ?? null;
   const selectedTemplate = templates.find((template) => template.templateId === selectedTemplateId) ?? matches[0]?.template;
   const signature = activeSheet && workbook ? buildFormatSignature(workbook.sheetNames, activeSheet) : "";
+  const rawSheet = workbook?.sheets.find((sheet) => sheetRoles[sheet.name] === "RAW") ?? workbook?.sheets.find((sheet) => !/analisis|anÃ¡lisis/i.test(sheet.name)) ?? null;
+  const processedSheet =
+    workbook?.sheets.find((sheet) => sheetRoles[sheet.name] === "PROCESSED") ??
+    workbook?.sheets.find((sheet) => /historical data \(2\)|processed|proces|clean|limp/i.test(sheet.name)) ??
+    activeSheet;
+  const analysisSheets = workbook?.sheets.filter((sheet) => sheetRoles[sheet.name] === "ANALYSIS") ?? [];
+  const rawCount = rawSheet?.headers.length ?? 0;
+  const processedCount = processedSheet?.headers.length ?? mappings.length;
+  const selectedCount = mappings.filter((mapping) => mapping.semantic.status !== "ignored" && mapping.semantic.fieldId !== "unassigned").length;
+  const conflictCount = mappings.filter((mapping) => mapping.semantic.status === "needs_review" || mapping.semantic.fieldId === "unassigned").length;
+  const familyCount = new Set(mappings.map((mapping) => mapping.semantic.family).filter((family) => family !== "unknown")).size;
+  const coverage = processedCount ? Math.round((selectedCount / processedCount) * 100) : 0;
+  const selectedMapping = mappings.find((mapping) => mapping.id === selectedMappingId) ?? mappings[0] ?? null;
 
   const groupedTemplates = useMemo(
     () =>
@@ -195,8 +240,11 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     const sheet = parsed.sheets[0];
     const ranked = rankTemplates(templates, sheet);
     const best = ranked[0]?.template;
+    const roles = Object.fromEntries(parsed.sheets.map((item) => [item.name, inferSheetRole(item.name)]));
     setWorkbook(parsed);
     setActiveSheetName(sheet.name);
+    setSheetRoles(roles);
+    setActiveTab("summary");
     setMatches(ranked);
     setSelectedTemplateId(best?.templateId ?? "");
     setMappings(best ? rescanWithRules(applyTemplate(best, sheet), learnedRules) : []);
@@ -487,7 +535,194 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[360px_1fr]">
+      <section className="rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-wrap gap-2">
+          {(["Archivo", "Clasificacion", "Variables RAW", "Variables SOLARIS", "Validacion", "Visualizacion", "Guardar"] as const).map((label, index) => {
+            const complete =
+              index === 0 ? Boolean(workbook) :
+              index === 1 ? Boolean(workbook && Object.keys(sheetRoles).length) :
+              index === 2 ? rawCount > 0 :
+              index === 3 ? processedCount > 0 :
+              index === 4 ? mappings.length > 0 && conflictCount === 0 :
+              index === 5 ? Boolean(workbook) :
+              templates.length > officialTemplates.length;
+            const current = workbook ? index === (conflictCount ? 4 : 5) : index === 0;
+            const Icon = complete ? CheckCircle2 : Circle;
+            return (
+              <div key={label} className={`flex min-w-0 items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium ${current ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                <Icon className="size-4 shrink-0" />
+                <span className="truncate">{index + 1}. {label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <nav className="flex min-w-0 gap-2 overflow-x-auto rounded-lg border border-border bg-card p-2">
+        {(Object.keys(tabLabels) as TranslatorTab[]).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            disabled={!workbook && tab !== "summary" && tab !== "template"}
+            className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+              activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {tabLabels[tab]}
+          </button>
+        ))}
+      </nav>
+
+      {activeTab === "summary" ? (
+        <section className="grid min-w-0 gap-4 xl:grid-cols-[1fr_360px]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Resumen del aprendizaje</CardTitle>
+              <CardDescription>Distingue universo RAW, subconjunto SOLARIS y cobertura del mapping.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["Variables RAW", rawCount],
+                ["Variables SOLARIS", processedCount],
+                ["Seleccionadas", selectedCount],
+                ["No seleccionadas", Math.max(rawCount - selectedCount, 0)],
+                ["Conflictos", conflictCount],
+                ["Familias", familyCount],
+                ["Hojas de análisis", analysisSheets.length],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-border bg-muted/30 p-4">
+                  <div className="text-xs font-medium text-muted-foreground">{label}</div>
+                  <div className="mt-2 text-2xl font-semibold">{value}</div>
+                </div>
+              ))}
+              <div className="sm:col-span-2 lg:col-span-3">
+                <div className="mb-2 flex flex-wrap justify-between gap-2 text-sm">
+                  <span>{selectedCount} de {processedCount} variables procesadas tienen origen o clasificación SOLARIS.</span>
+                  <span className="font-semibold">{coverage}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${coverage}%` }} />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">{selectedCount} de {rawCount} variables RAW fueron seleccionadas para SOLARIS. Una RAW no seleccionada no es inválida.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Hojas detectadas</CardTitle>
+              <CardDescription>Clasificación conceptual del archivo.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {workbook?.sheets.map((sheet) => (
+                <div key={sheet.name} className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border p-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{sheet.name}</div>
+                    <div className="text-xs text-muted-foreground">{sheet.headers.length} columnas</div>
+                  </div>
+                  <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium ${roleBadgeClass(sheetRoles[sheet.name] ?? "UNKNOWN")}`}>
+                    {sheetRoles[sheet.name] ?? "UNKNOWN"}
+                  </span>
+                </div>
+              )) ?? <div className="text-sm text-muted-foreground">Carga un archivo para iniciar.</div>}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      {activeTab === "sheets" && workbook ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Clasificación de hojas</CardTitle>
+            <CardDescription>Corrige RAW, PROCESSED, ANALYSIS o UNKNOWN sin modificar el archivo original.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid min-w-0 gap-3 md:grid-cols-2">
+            {workbook.sheets.map((sheet) => (
+              <div key={sheet.name} className="rounded-lg border border-border p-4">
+                <div className="font-medium">{sheet.name}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{sheet.headers.length} columnas · fila encabezado {sheet.headerRow + 1}</div>
+                <select
+                  value={sheetRoles[sheet.name] ?? "UNKNOWN"}
+                  onChange={(event) => setSheetRoles((current) => ({ ...current, [sheet.name]: event.target.value as SheetRole }))}
+                  className="mt-3 h-9 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground"
+                >
+                  <option value="RAW">RAW</option>
+                  <option value="PROCESSED">PROCESSED</option>
+                  <option value="ANALYSIS">ANALYSIS</option>
+                  <option value="UNKNOWN">UNKNOWN</option>
+                </select>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "raw" && rawSheet ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Catálogo RAW</CardTitle>
+            <CardDescription>Universo completo de encabezados detectados; no todas las variables tienen que usarse en SOLARIS.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {rawSheet.headers.map((header, index) => (
+              <div key={`${header}-${index}`} className="rounded-md border border-border p-3 text-sm">
+                <div className="font-medium">{header}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Unidad: {rawSheet.columnProfiles?.[index]?.detectedUnit || "-"} · {rawSheet.columnProfiles?.[index]?.detectedTypes.join(", ") || "sin perfil"}</div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "solaris" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Variables SOLARIS</CardTitle>
+            <CardDescription>Vista compacta de variables seleccionadas para la plataforma.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid min-w-0 gap-3 lg:grid-cols-[1fr_360px]">
+            <div className="grid min-w-0 gap-2">
+              {mappings.map((mapping) => (
+                <button
+                  key={mapping.id}
+                  type="button"
+                  onClick={() => setSelectedMappingId(mapping.id)}
+                  className={`grid min-w-0 gap-2 rounded-lg border p-3 text-left sm:grid-cols-[1.2fr_1.2fr_.8fr_.4fr_.7fr] ${selectedMapping?.id === mapping.id ? "border-primary bg-primary/5" : "border-border bg-card"}`}
+                >
+                  <span className="min-w-0 truncate font-medium">{mapping.sourceHeader}</span>
+                  <span className="min-w-0 truncate text-muted-foreground">{mapping.semantic.displayName}</span>
+                  <span>{familyLabels[mapping.semantic.family]}</span>
+                  <span>{mapping.semantic.sourceUnit || "-"}</span>
+                  <span>{statusLabels[mapping.semantic.status]}</span>
+                </button>
+              ))}
+            </div>
+            {selectedMapping ? (
+              <aside className="min-w-0 rounded-lg border border-border bg-muted/20 p-4">
+                <div className="font-semibold">Detalles avanzados</div>
+                <div className="mt-3 grid gap-2 text-sm">
+                  <div><span className="text-muted-foreground">RAW:</span> {selectedMapping.sourceHeader}</div>
+                  <div><span className="text-muted-foreground">Campo estándar:</span> {selectedMapping.semantic.fieldId}</div>
+                  <div><span className="text-muted-foreground">Nombre público:</span> {selectedMapping.semantic.displayName}</div>
+                  <div><span className="text-muted-foreground">Descripción:</span> {selectedMapping.semantic.description ?? "-"}</div>
+                  <div><span className="text-muted-foreground">Lado:</span> {selectedMapping.semantic.electricalSide ?? "-"}</div>
+                  <div><span className="text-muted-foreground">Entidad:</span> {selectedMapping.semantic.entity ?? "-"}</div>
+                  <div><span className="text-muted-foreground">Índice:</span> {selectedMapping.semantic.index ?? "-"}</div>
+                  <div><span className="text-muted-foreground">Fase:</span> {selectedMapping.semantic.phase ?? selectedMapping.semantic.phaseFrom ?? "-"}</div>
+                  <div><span className="text-muted-foreground">Unidad:</span> {selectedMapping.semantic.sourceUnit || "-"} → {selectedMapping.semantic.standardUnit || "-"}</div>
+                  <div><span className="text-muted-foreground">Confianza:</span> {Math.round(selectedMapping.semantic.confidence * 100)}%</div>
+                  <div><span className="text-muted-foreground">Patrón:</span> {selectedMapping.semantic.patternId ?? "-"}</div>
+                  <Button variant="outline" size="sm" onClick={() => setEditingId(selectedMapping.id)}>Editar variable</Button>
+                </div>
+              </aside>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "mapping" ? (
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[360px_1fr]">
         <Card>
           <CardHeader>
             <CardTitle>Deteccion</CardTitle>
@@ -542,8 +777,8 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>Significado semantico corregible</CardTitle>
-                <CardDescription>Las variables se clasifican por familia, lado electrico, entidad, fase o indice sin crear campos individuales.</CardDescription>
+                <CardTitle>Detalles avanzados del mapeo</CardTitle>
+                <CardDescription>Vista tecnica completa para revisar reglas, entidades, fases, indices y confianza.</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" disabled={!auditEntries.some((entry) => entry.action === "batch_apply")} onClick={undoLastBatch}>
@@ -556,7 +791,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 </Button>
                 <Button disabled={!mappings.length} onClick={() => setSaveOpen(true)}>
                   <Save className="size-4" />
-                  Guardar como plantilla
+                  Guardar plantilla SOLARIS
                 </Button>
               </div>
             </div>
@@ -781,8 +1016,28 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
           </CardContent>
         </Card>
       </section>
+      ) : null}
 
-      <DataTranslatorExplorer workbook={workbook} />
+      {activeTab === "explore" ? <DataTranslatorExplorer workbook={workbook} /> : null}
+
+      {activeTab === "template" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Plantilla</CardTitle>
+            <CardDescription>Guarda y versiona el formato aprendido de SOLARIS.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button disabled={!mappings.length} onClick={() => setSaveOpen(true)}>
+              <Save className="size-4" />
+              Guardar plantilla SOLARIS
+            </Button>
+            <Button variant="outline" disabled={!selectedTemplate} onClick={() => selectedTemplate && downloadJson(`${selectedTemplate.templateId}.json`, selectedTemplate)}>
+              <Download className="size-4" />
+              Descargar plantilla aplicada
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {ruleProposal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -908,7 +1163,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
       {saveOpen ? (
         <Card className="border-blue-200">
           <CardHeader>
-            <CardTitle>Guardar como plantilla</CardTitle>
+            <CardTitle>Guardar plantilla SOLARIS</CardTitle>
             <CardDescription>No publica una plantilla oficial. En el MVP descarga un JSON privado o personalizado.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 lg:grid-cols-3">

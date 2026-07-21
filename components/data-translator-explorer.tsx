@@ -77,7 +77,7 @@ function SelectablePill({ selected, children, onClick }: { selected: boolean; ch
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md border px-2 py-1 text-xs font-medium ${selected ? "border-blue-600 bg-blue-50 text-blue-700" : "border-border bg-card text-muted-foreground"}`}
+      className={`rounded-md border px-2 py-1 text-xs font-medium ${selected ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"}`}
     >
       {children}
     </button>
@@ -309,7 +309,7 @@ export function DataTranslatorExplorer({ workbook }: { workbook: ParsedWorkbookL
           </div>
 
           {estimatedWarning ? (
-            <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+            <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               El intervalo solicitado puede ser menor que la resolucion original. Los puntos adicionales no se inventan; se conservan buckets con datos existentes.
             </div>
           ) : null}

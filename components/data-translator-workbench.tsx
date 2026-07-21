@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DataTranslatorExplorer } from "@/components/data-translator-explorer";
 import {
   applyTemplate,
   buildFormatSignature,
@@ -780,6 +781,8 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
           </CardContent>
         </Card>
       </section>
+
+      <DataTranslatorExplorer workbook={workbook} />
 
       {ruleProposal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

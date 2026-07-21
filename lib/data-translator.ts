@@ -91,7 +91,7 @@ export function buildSheetPreview(name: string, rows: unknown[][]): SheetPreview
   const dataRows = stringRows.slice(headerRow + 1);
   return {
     name,
-    rows: stringRows.slice(0, 8),
+    rows: stringRows,
     headerRow,
     headers,
     normalizedHeaders: headers.map(normalizeHeader),

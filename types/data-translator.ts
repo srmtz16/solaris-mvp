@@ -209,3 +209,70 @@ export type ManualMappingDraft = TranslatorMapping & {
   id: string;
   semantic: SemanticVariable;
 };
+
+export type VisualizationCategory = "AC" | "MPPT" | "Strings" | "Energy" | "Temperature" | "Operation" | "Other";
+
+export type VisualizationMeasurement = "voltage" | "current" | "power" | "energy" | "frequency" | "power_factor" | "temperature" | "status" | "unknown";
+
+export type VisualizationInterval = "original" | "1m" | "5m" | "10m" | "15m" | "30m" | "60m" | "1d";
+
+export type VisualizationAggregation = "automatic" | "mean" | "min" | "max" | "sum" | "last" | "first";
+
+export type NormalizedVariable = {
+  fieldId: string;
+  sourceHeader: string;
+  standardHeader?: string;
+  displayName: string;
+  category: VisualizationCategory;
+  entityType?: string;
+  entityIndex?: number;
+  measurement: VisualizationMeasurement;
+  unit: string;
+  dataType: "number" | "string" | "date";
+  defaultAggregation: Exclude<VisualizationAggregation, "automatic">;
+  visualizable: boolean;
+  searchTerms: string[];
+  quality: "alta" | "media" | "revisar";
+  color: string;
+  columnIndex: number;
+  profile?: ColumnDataProfile;
+};
+
+export type AnalysisSheetEvidence = {
+  sourceSheet: string;
+  range: string;
+  sourceColumn?: string;
+  formulaPattern?: string;
+};
+
+export type VisualizationTemplate = {
+  templateId: string;
+  viewName: string;
+  viewType: "time_series";
+  sourceSheet: string;
+  category: VisualizationCategory | "Free";
+  xAxisField: string;
+  defaultSeries: string[];
+  availableGroups: string[];
+  allowMixedMeasurements: boolean;
+  multiAxisByUnit: boolean;
+  defaultInterval: VisualizationInterval;
+  defaultAggregation: VisualizationAggregation;
+  evidence: AnalysisSheetEvidence[];
+};
+
+export type SavedVisualizationView = {
+  id: string;
+  name: string;
+  variables: string[];
+  interval: VisualizationInterval;
+  aggregation: VisualizationAggregation;
+  dateStart?: string;
+  dateEnd?: string;
+  timeStart?: string;
+  timeEnd?: string;
+  axisMode: "auto_by_unit" | "normalized" | "separate_panels";
+  order: string[];
+  chartType: "line";
+  createdAt: string;
+};

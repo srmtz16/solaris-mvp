@@ -11,7 +11,9 @@ import {
   applyTemplate,
   buildFormatSignature,
   buildSheetPreview,
+  compareRawProcessedColumns,
   createTemplateFromMappings,
+  detectWorkbookMetadata,
   downloadJson,
   inferFileType,
   rankTemplates,
@@ -28,6 +30,7 @@ import type {
   FileType,
   ManualMappingDraft,
   ParameterizedRule,
+  RawProcessedColumnMatch,
   RuleProposal,
   RuleScope,
   SheetPreview,
@@ -79,13 +82,6 @@ function inferSheetRole(sheetName: string): SheetRole {
   if (name.includes("(2)") || name.includes("processed") || name.includes("proces") || name.includes("clean") || name.includes("limp")) return "PROCESSED";
   if (name.includes("raw") || name.includes("historical data")) return "RAW";
   return "UNKNOWN";
-}
-
-function roleBadgeClass(role: SheetRole) {
-  if (role === "RAW") return "bg-primary/10 text-primary";
-  if (role === "PROCESSED") return "bg-success/10 text-success";
-  if (role === "ANALYSIS") return "bg-warning/10 text-warning";
-  return "bg-muted text-muted-foreground";
 }
 
 function parseRowsFromSheet(sheet: XLSX.WorkSheet) {
@@ -168,9 +164,12 @@ function FieldInput({
 
 export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplates: TranslatorTemplate[] }) {
   const dataInputRef = useRef<HTMLInputElement | null>(null);
+  const processedInputRef = useRef<HTMLInputElement | null>(null);
   const templateInputRef = useRef<HTMLInputElement | null>(null);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
+  const [processedWorkbook, setProcessedWorkbook] = useState<ParsedWorkbook | null>(null);
   const [activeSheetName, setActiveSheetName] = useState("");
+  const [processedSheetName, setProcessedSheetName] = useState("");
   const [templates, setTemplates] = useState<TranslatorTemplate[]>(officialTemplates);
   const [matches, setMatches] = useState<TemplateMatch[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(officialTemplates[0]?.templateId ?? "");
@@ -188,6 +187,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [activeTab, setActiveTab] = useState<TranslatorTab>("summary");
   const [selectedMappingId, setSelectedMappingId] = useState("");
   const [sheetRoles, setSheetRoles] = useState<Record<string, SheetRole>>({});
+  const [rawProcessedMatches, setRawProcessedMatches] = useState<RawProcessedColumnMatch[]>([]);
   const [learnedRules, setLearnedRules] = useState<ParameterizedRule[]>([]);
   const [ruleProposal, setRuleProposal] = useState<RuleProposal | null>(null);
   const [selectedRuleHeaders, setSelectedRuleHeaders] = useState<string[]>([]);
@@ -197,10 +197,16 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [auditEntries, setAuditEntries] = useState<TranslatorAuditEntry[]>([]);
 
   const activeSheet = workbook?.sheets.find((sheet) => sheet.name === activeSheetName) ?? workbook?.sheets[0] ?? null;
+  const activeProcessedSheet =
+    processedWorkbook?.sheets.find((sheet) => sheet.name === processedSheetName) ??
+    workbook?.sheets.find((sheet) => sheet.name === processedSheetName) ??
+    null;
+  const learningSheet = activeProcessedSheet ?? activeSheet;
   const selectedTemplate = templates.find((template) => template.templateId === selectedTemplateId) ?? matches[0]?.template;
-  const signature = activeSheet && workbook ? buildFormatSignature(workbook.sheetNames, activeSheet) : "";
+  const signature = learningSheet && workbook ? buildFormatSignature([...(workbook?.sheetNames ?? []), ...(processedWorkbook?.sheetNames ?? [])], learningSheet) : "";
   const rawSheet = workbook?.sheets.find((sheet) => sheetRoles[sheet.name] === "RAW") ?? workbook?.sheets.find((sheet) => !/analisis|anÃ¡lisis/i.test(sheet.name)) ?? null;
   const processedSheet =
+    activeProcessedSheet ??
     workbook?.sheets.find((sheet) => sheetRoles[sheet.name] === "PROCESSED") ??
     workbook?.sheets.find((sheet) => /historical data \(2\)|processed|proces|clean|limp/i.test(sheet.name)) ??
     activeSheet;
@@ -212,6 +218,20 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const familyCount = new Set(mappings.map((mapping) => mapping.semantic.family).filter((family) => family !== "unknown")).size;
   const coverage = processedCount ? Math.round((selectedCount / processedCount) * 100) : 0;
   const selectedMapping = mappings.find((mapping) => mapping.id === selectedMappingId) ?? mappings[0] ?? null;
+  const detectedMetadata = rawSheet && workbook ? detectWorkbookMetadata({ fileName: workbook.fileName, sheet: rawSheet }) : null;
+  const discardedRawColumns = rawProcessedMatches.filter((match) => !match.processedHeader || match.score < 45).length;
+  const lowConfidenceMatches = rawProcessedMatches.filter((match) => match.score < 70).length;
+  const visualizationWorkbook = useMemo(
+    () =>
+      workbook
+        ? {
+            ...workbook,
+            sheetNames: [...workbook.sheetNames, ...(processedWorkbook?.sheetNames ?? [])],
+            sheets: [...workbook.sheets, ...(processedWorkbook?.sheets ?? [])],
+          }
+        : null,
+    [workbook, processedWorkbook],
+  );
 
   const groupedTemplates = useMemo(
     () =>
@@ -229,6 +249,17 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     return /\.(csv|xls|xlsx)$/i.test(file.name);
   }
 
+  function learnFromSheets(raw: SheetPreview | null | undefined, processed: SheetPreview | null | undefined, availableTemplates = templates) {
+    const sheet = processed ?? raw;
+    if (!sheet) return;
+    const ranked = rankTemplates(availableTemplates, sheet);
+    const best = ranked[0]?.template;
+    setMatches(ranked);
+    setSelectedTemplateId(best?.templateId ?? "");
+    setMappings(best ? rescanWithRules(applyTemplate(best, sheet), learnedRules) : []);
+    setRawProcessedMatches(raw && processed ? compareRawProcessedColumns(raw, processed) : []);
+  }
+
   async function handleFile(file: File) {
     if (!isSupportedDataFile(file)) {
       setFileError("Selecciona un archivo de datos .csv, .xls o .xlsx. Los JSON son solo para plantillas guardadas.");
@@ -238,16 +269,34 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setFileError("");
     const parsed = await parseFile(file);
     const sheet = parsed.sheets[0];
-    const ranked = rankTemplates(templates, sheet);
-    const best = ranked[0]?.template;
     const roles = Object.fromEntries(parsed.sheets.map((item) => [item.name, inferSheetRole(item.name)]));
+    const guessedProcessed = parsed.sheets.find((item) => roles[item.name] === "PROCESSED" && item.name !== sheet.name) ?? null;
     setWorkbook(parsed);
     setActiveSheetName(sheet.name);
+    setProcessedWorkbook(null);
+    setProcessedSheetName(guessedProcessed?.name ?? "");
     setSheetRoles(roles);
     setActiveTab("summary");
-    setMatches(ranked);
-    setSelectedTemplateId(best?.templateId ?? "");
-    setMappings(best ? rescanWithRules(applyTemplate(best, sheet), learnedRules) : []);
+    learnFromSheets(sheet, guessedProcessed ?? sheet);
+  }
+
+  async function handleProcessedFile(file: File) {
+    if (!isSupportedDataFile(file)) {
+      setFileError("El archivo procesado debe ser .csv, .xls o .xlsx. El JSON queda reservado para plantillas.");
+      return;
+    }
+    if (!rawSheet) {
+      setFileError("Carga primero el archivo RAW para poder comparar contra el archivo procesado.");
+      return;
+    }
+    setFileError("");
+    const parsed = await parseFile(file);
+    const sheet = parsed.sheets[0];
+    setProcessedWorkbook(parsed);
+    setProcessedSheetName(sheet.name);
+    setSheetRoles((current) => ({ ...current, [sheet.name]: "PROCESSED" }));
+    setActiveTab("mapping");
+    learnFromSheets(rawSheet, sheet);
   }
 
   function handleSheetChange(sheetName: string) {
@@ -262,12 +311,20 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setMappings(best ? rescanWithRules(applyTemplate(best, sheet), learnedRules) : []);
   }
 
+  function handleProcessedSheetChange(sheetName: string) {
+    const sheet = processedWorkbook?.sheets.find((item) => item.name === sheetName) ?? workbook?.sheets.find((item) => item.name === sheetName);
+    if (!sheet) return;
+    setProcessedSheetName(sheetName);
+    setSheetRoles((current) => ({ ...current, [sheetName]: "PROCESSED" }));
+    learnFromSheets(rawSheet, sheet);
+  }
+
   function handleTemplateSelect(templateId: string) {
-    if (!activeSheet) return;
+    if (!learningSheet) return;
     const template = templates.find((item) => item.templateId === templateId);
     if (!template) return;
     setSelectedTemplateId(templateId);
-    setMappings(rescanWithRules(applyTemplate(template, activeSheet), learnedRules));
+    setMappings(rescanWithRules(applyTemplate(template, learningSheet), learnedRules));
   }
 
   function updateSemantic(index: number, patch: Partial<ManualMappingDraft["semantic"]>) {
@@ -391,7 +448,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   }
 
   function saveTemplate() {
-    if (!workbook || !activeSheet) return;
+    if (!workbook || !learningSheet) return;
     const template = createTemplateFromMappings({
       name: templateName,
       manufacturer,
@@ -399,11 +456,15 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
       exportType,
       version,
       scope,
-      fileType: workbook.fileType,
-      sheet: activeSheet,
-      sheetNames: workbook.sheetNames,
+      fileType: processedWorkbook?.fileType ?? workbook.fileType,
+      sheet: learningSheet,
+      sheetNames: [...workbook.sheetNames, ...(processedWorkbook?.sheetNames ?? [])],
       mappings,
       parameterizedRules: learnedRules,
+      rawSheet,
+      processedSheet,
+      metadata: detectedMetadata,
+      rawProcessedMatches,
     });
     setTemplates((current) => [template, ...current]);
     setSelectedTemplateId(template.templateId);
@@ -417,7 +478,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setTemplates((current) => [{ ...template, scope: template.scope ?? "custom" }, ...current]);
     if (template.parameterizedRules?.length) setLearnedRules((current) => [...template.parameterizedRules!, ...current]);
     setSelectedTemplateId(template.templateId);
-    if (activeSheet) setMappings(rescanWithRules(applyTemplate(template, activeSheet), [...(template.parameterizedRules ?? []), ...learnedRules]));
+    if (learningSheet) setMappings(rescanWithRules(applyTemplate(template, learningSheet), [...(template.parameterizedRules ?? []), ...learnedRules]));
   }
 
   return (
@@ -451,7 +512,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
         <Card>
           <CardHeader>
             <CardTitle>Entrada</CardTitle>
-            <CardDescription>Primero carga el archivo de datos. El JSON es solo para plantillas guardadas.</CardDescription>
+            <CardDescription>Primero carga RAW y luego el archivo u hoja procesada. El JSON es solo para plantillas guardadas.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div
@@ -477,8 +538,8 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
               }}
             >
               <FileSpreadsheet className="size-9 text-blue-600" />
-              <span className="text-sm font-semibold">Archivo de datos XLS, XLSX o CSV</span>
-              <span className="text-xs text-muted-foreground">Arrastra tu exportacion aqui o selecciona el archivo desde tu equipo.</span>
+              <span className="text-sm font-semibold">1. Archivo RAW XLS, XLSX o CSV</span>
+              <span className="text-xs text-muted-foreground">Exportacion original del fabricante o inversor, sin limpiar.</span>
               <Button
                 type="button"
                 onClick={(event) => {
@@ -501,6 +562,63 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 event.currentTarget.value = "";
               }}
             />
+            <div
+              className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-center transition-colors hover:bg-muted/50"
+              role="button"
+              tabIndex={0}
+              onClick={() => processedInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") processedInputRef.current?.click();
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files?.[0];
+                if (file) void handleProcessedFile(file);
+              }}
+            >
+              <RefreshCw className="size-7 text-primary" />
+              <span className="text-sm font-semibold">2. Archivo procesado normalizado</span>
+              <span className="text-xs text-muted-foreground">Opcional si el mismo XLS ya contiene una hoja limpia.</span>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!workbook}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  processedInputRef.current?.click();
+                }}
+              >
+                <FileUp className="size-4" />
+                Seleccionar procesado
+              </Button>
+            </div>
+            <input
+              ref={processedInputRef}
+              type="file"
+              accept={dataFileAccept}
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleProcessedFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            {workbook && workbook.sheets.length > 1 ? (
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                Usar hoja procesada del mismo archivo
+                <select
+                  value={processedSheetName}
+                  onChange={(event) => handleProcessedSheetChange(event.target.value)}
+                  className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground"
+                >
+                  <option value="">Sin hoja procesada separada</option>
+                  {workbook.sheets.map((sheet) => (
+                    <option key={sheet.name} value={sheet.name}>{sheet.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             {fileError ? (
               <div className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 p-3 text-sm text-red-700">
                 <AlertTriangle className="mt-0.5 size-4" />
@@ -509,7 +627,12 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
             ) : null}
             {workbook ? (
               <div className="rounded-md border border-green-100 bg-green-50 p-3 text-sm text-green-700">
-                Archivo cargado: <span className="font-semibold">{workbook.fileName}</span>
+                RAW cargado: <span className="font-semibold">{workbook.fileName}</span>
+              </div>
+            ) : null}
+            {processedWorkbook ? (
+              <div className="rounded-md border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+                Procesado cargado: <span className="font-semibold">{processedWorkbook.fileName}</span>
               </div>
             ) : null}
             <button
@@ -537,16 +660,16 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
 
       <section className="rounded-lg border border-border bg-card p-4">
         <div className="flex flex-wrap gap-2">
-          {(["Archivo", "Clasificacion", "Variables RAW", "Variables SOLARIS", "Validacion", "Visualizacion", "Guardar"] as const).map((label, index) => {
+          {(["Cargar RAW", "Metadatos", "Cargar procesado", "Comparar columnas", "Validar mapeos", "Visualizar", "Guardar"] as const).map((label, index) => {
             const complete =
               index === 0 ? Boolean(workbook) :
-              index === 1 ? Boolean(workbook && Object.keys(sheetRoles).length) :
-              index === 2 ? rawCount > 0 :
-              index === 3 ? processedCount > 0 :
+              index === 1 ? Boolean(detectedMetadata) :
+              index === 2 ? Boolean(processedSheet && processedSheet !== rawSheet) :
+              index === 3 ? rawProcessedMatches.length > 0 :
               index === 4 ? mappings.length > 0 && conflictCount === 0 :
               index === 5 ? Boolean(workbook) :
               templates.length > officialTemplates.length;
-            const current = workbook ? index === (conflictCount ? 4 : 5) : index === 0;
+            const current = !workbook ? index === 0 : !rawProcessedMatches.length ? index === 2 : conflictCount ? index === 4 : index === 5;
             const Icon = complete ? CheckCircle2 : Circle;
             return (
               <div key={label} className={`flex min-w-0 items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium ${current ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
@@ -590,6 +713,9 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 ["Conflictos", conflictCount],
                 ["Familias", familyCount],
                 ["Hojas de análisis", analysisSheets.length],
+                ["Emparejadas RAW", rawProcessedMatches.filter((match) => match.processedHeader).length],
+                ["Descartadas RAW", discardedRawColumns],
+                ["Baja confianza", lowConfidenceMatches],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border bg-muted/30 p-4">
                   <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -604,28 +730,36 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 <div className="h-2 rounded-full bg-muted">
                   <div className="h-full rounded-full bg-primary" style={{ width: `${coverage}%` }} />
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">{selectedCount} de {rawCount} variables RAW fueron seleccionadas para SOLARIS. Una RAW no seleccionada no es inválida.</p>
+                <p className="mt-2 text-xs text-muted-foreground">{selectedCount} de {rawCount} variables RAW fueron seleccionadas para SOLARIS. Una RAW no seleccionada no es invalida: puede haber sido descartada al limpiar el archivo.</p>
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Hojas detectadas</CardTitle>
-              <CardDescription>Clasificación conceptual del archivo.</CardDescription>
+              <CardTitle>Metadatos detectados</CardTitle>
+              <CardDescription>Naturaleza del RAW inferida desde archivo, hojas, encabezados y primeras filas.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              {workbook?.sheets.map((sheet) => (
-                <div key={sheet.name} className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border p-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{sheet.name}</div>
-                    <div className="text-xs text-muted-foreground">{sheet.headers.length} columnas</div>
+              {detectedMetadata ? (
+                [
+                  ["Marca", detectedMetadata.manufacturer ?? "No detectada"],
+                  ["Modelo", detectedMetadata.model ?? "No detectado"],
+                  ["Potencia nominal", detectedMetadata.powerCapacityKw ? `${detectedMetadata.powerCapacityKw} kW` : "No detectada"],
+                  ["Inversor", detectedMetadata.inverter ?? "No detectado"],
+                  ["Periodo", detectedMetadata.period ?? "No detectado"],
+                  ["Zona horaria", detectedMetadata.timezone ?? "America/Mexico_City (supuesto MVP)"],
+                  ["Tipo exportacion", detectedMetadata.exportType ?? "No detectado"],
+                  ["Estructura", detectedMetadata.columnStructure],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex min-w-0 justify-between gap-3 rounded-md border border-border p-3 text-sm">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="min-w-0 text-right font-medium">{value}</span>
                   </div>
-                  <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium ${roleBadgeClass(sheetRoles[sheet.name] ?? "UNKNOWN")}`}>
-                    {sheetRoles[sheet.name] ?? "UNKNOWN"}
-                  </span>
-                </div>
-              )) ?? <div className="text-sm text-muted-foreground">Carga un archivo para iniciar.</div>}
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground">Carga un archivo RAW para iniciar.</div>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -725,10 +859,35 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
       <section className="grid min-w-0 gap-4 xl:grid-cols-[360px_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Deteccion</CardTitle>
-            <CardDescription>Hojas, fila de encabezados, firma y mejor coincidencia.</CardDescription>
+            <CardTitle>Comparacion RAW + procesado</CardTitle>
+            <CardDescription>Hojas, encabezados, firma y coincidencias por valores, unidades y patrones.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {rawProcessedMatches.length ? (
+              <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
+                {rawProcessedMatches.map((match) => (
+                  <div key={match.id} className="border-t border-border p-3 text-sm first:border-t-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{match.rawHeader}</div>
+                        <div className="truncate text-xs text-muted-foreground">→ {match.processedHeader || "Descartada / sin match"}</div>
+                      </div>
+                      <Badge variant={match.score >= 70 ? "default" : match.score >= 45 ? "secondary" : "destructive"}>{match.score}%</Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                      <span className="rounded bg-muted px-2 py-1">{match.method}</span>
+                      <span className="rounded bg-muted px-2 py-1">{match.electricalSide ?? "lado ?"}</span>
+                      <span className="rounded bg-muted px-2 py-1">{match.measurementType}</span>
+                      <span className="rounded bg-muted px-2 py-1">{match.entityType ?? "entidad ?"}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                Carga o selecciona una hoja procesada para crear la relacion RAW original → procesado normalizado → campo SOLARIS.
+              </div>
+            )}
             {workbook && activeSheet ? (
               <>
                 <div className="grid gap-3">
@@ -742,6 +901,21 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                       {workbook.sheetNames.map((sheetName) => (
                         <option key={sheetName} value={sheetName}>
                           {sheetName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                    Hoja procesada
+                    <select
+                      value={processedSheetName}
+                      onChange={(event) => handleProcessedSheetChange(event.target.value)}
+                      className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground"
+                    >
+                      <option value="">Usar hoja RAW / sin procesado</option>
+                      {[...(workbook?.sheets ?? []), ...(processedWorkbook?.sheets ?? [])].map((sheet) => (
+                        <option key={`${sheet.name}-${sheet.headers.length}`} value={sheet.name}>
+                          {sheet.name}
                         </option>
                       ))}
                     </select>
@@ -1018,7 +1192,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
       </section>
       ) : null}
 
-      {activeTab === "explore" ? <DataTranslatorExplorer workbook={workbook} /> : null}
+      {activeTab === "explore" ? <DataTranslatorExplorer workbook={visualizationWorkbook} sourceSheetName={processedSheet?.name} /> : null}
 
       {activeTab === "template" ? (
         <Card>

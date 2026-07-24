@@ -15,6 +15,35 @@ export type SemanticFamily =
 
 export type ElectricalSide = "dc" | "ac" | "grid" | "none";
 
+export type TemplateElectricalSide = "DC" | "AC";
+
+export type TranslatorMeasurementType =
+  | "voltage"
+  | "current"
+  | "power"
+  | "energy"
+  | "frequency"
+  | "powerFactor"
+  | "temperature"
+  | "irradiance"
+  | "other";
+
+export type TranslatorEntityType = "plant" | "inverter" | "mppt" | "string" | "phase" | "meter";
+
+export type ColumnMatchMethod = "header" | "value_similarity" | "unit_pattern" | "manual" | "template";
+
+export type DetectedTranslatorMetadata = {
+  manufacturer?: string;
+  model?: string;
+  powerCapacityKw?: number;
+  inverter?: string;
+  period?: string;
+  timezone?: string;
+  exportType?: string;
+  columnStructure: string;
+  detectedFrom: string[];
+};
+
 export type SemanticPriority = "critical" | "important" | "complementary" | "optional" | "ignore";
 
 export type SemanticStatus = "auto_detected" | "needs_review" | "confirmed" | "unassigned" | "ignored";
@@ -159,12 +188,25 @@ export type TranslatorAuditEntry = {
 export type TranslatorMapping = {
   sourceHeader: string;
   normalizedSourceHeader: string;
+  sourceHeaderRaw?: string;
+  normalizedSourceHeaderRaw?: string;
+  processedHeader?: string;
+  normalizedProcessedHeader?: string;
   targetField: string;
+  electricalSide?: TemplateElectricalSide;
+  measurementType?: TranslatorMeasurementType;
   sourceUnit: string;
   targetUnit: string;
+  entityType?: TranslatorEntityType;
+  entityIndex?: number;
+  mpptIndex?: number;
+  stringIndex?: number;
+  phase?: "L1" | "L2" | "L3";
   transform: string;
   required: boolean;
   confidence: number;
+  matchMethod?: ColumnMatchMethod;
+  notes?: string;
   semantic?: SemanticVariable;
 };
 
@@ -173,14 +215,20 @@ export type TranslatorTemplate = {
   name: string;
   manufacturer: string;
   model: string;
+  powerCapacityKw?: number;
   fileType: FileType;
   sheetName: string;
+  sheetNameRaw?: string;
+  sheetNameProcessed?: string;
   headerRow: number;
+  headerRowRaw?: number;
+  headerRowProcessed?: number;
   dateFormat: string;
   timezone: string;
   version: string;
   confidence: number;
   formatSignature: string;
+  detectedMetadata?: DetectedTranslatorMetadata;
   scope: TemplateScope;
   exportType?: string;
   anonymizedSample?: Record<string, string | number | null>;
@@ -203,6 +251,27 @@ export type TemplateMatch = {
   matchedHeaders: number;
   totalTemplateHeaders: number;
   totalFileHeaders: number;
+};
+
+export type RawProcessedColumnMatch = {
+  id: string;
+  rawHeader: string;
+  processedHeader: string;
+  normalizedRawHeader: string;
+  normalizedProcessedHeader: string;
+  rawIndex: number;
+  processedIndex: number;
+  score: number;
+  method: ColumnMatchMethod;
+  unit?: string;
+  electricalSide?: TemplateElectricalSide;
+  measurementType: TranslatorMeasurementType;
+  entityType?: TranslatorEntityType;
+  entityIndex?: number;
+  mpptIndex?: number;
+  stringIndex?: number;
+  phase?: "L1" | "L2" | "L3";
+  notes: string;
 };
 
 export type ManualMappingDraft = TranslatorMapping & {

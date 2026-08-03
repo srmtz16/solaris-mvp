@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ThemeSelector } from "@/components/theme-selector";
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -94,7 +95,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden text-sm text-muted-foreground lg:block">Portafolio solar operativo</div>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-muted-foreground sm:block">Ultima sincronizacion: 10 jul 2026, 10:15</span>
-            <span className="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Sistema normal</span>
+            <span className="rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success">Sistema normal</span>
+            <ThemeSelector compact />
           </div>
         </header>
         <main className="min-w-0 overflow-x-hidden px-4 py-6 md:px-8">{children}</main>

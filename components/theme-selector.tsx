@@ -10,18 +10,27 @@ const options: Array<{ value: ThemePreference; label: string; icon: typeof Sun }
   { value: "system", label: "Sistema", icon: Monitor },
 ];
 
-export function ThemeSelector() {
+export function ThemeSelector({ compact = false }: { compact?: boolean }) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-card p-1">
+    <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-1">
       {options.map((option) => {
         const Icon = option.icon;
         const selected = theme === option.value;
         return (
-          <Button key={option.value} type="button" variant={selected ? "default" : "ghost"} size="sm" onClick={() => setTheme(option.value)}>
+          <Button
+            key={option.value}
+            type="button"
+            variant={selected ? "default" : "ghost"}
+            size={compact ? "icon" : "sm"}
+            className={compact ? "size-8" : undefined}
+            onClick={() => setTheme(option.value)}
+            title={`Tema ${option.label}`}
+            aria-label={`Tema ${option.label}`}
+          >
             <Icon className="size-4" />
-            {option.label}
+            {compact ? null : option.label}
           </Button>
         );
       })}

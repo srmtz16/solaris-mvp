@@ -83,6 +83,12 @@ function SelectablePill({ selected, children, onClick }: { selected: boolean; ch
   );
 }
 
+function axisForMeasurement(measurement: VisualizationMeasurement) {
+  if (measurement === "current") return "current";
+  if (measurement === "power") return "power";
+  return "voltage";
+}
+
 function variableSide(variable: { category: VisualizationCategory; measurement: VisualizationMeasurement; sourceHeader: string; displayName: string }) {
   const text = `${variable.sourceHeader} ${variable.displayName}`.toLowerCase();
   if (variable.category === "MPPT" || variable.category === "Strings" || /mppt|string|pv|dc|vpv|ipv|ppv|vstr|istr/.test(text)) return "DC";
@@ -98,6 +104,7 @@ function filterLabel(value: string) {
     dc_power: "Potencia DC",
     mppt_voltage: "MPPT (V)",
     mppt_current: "MPPT (A)",
+    mppt_power: "MPPT (W)",
     string_voltage: "String (V)",
     string_current: "String (A)",
     l1: "Fase L1",
@@ -120,6 +127,7 @@ function variableMatchesElectricalFilter(variable: { category: VisualizationCate
   if (filter === "dc_power") return variable.category === "MPPT" && variable.measurement === "power";
   if (filter === "mppt_voltage") return variable.category === "MPPT" && variable.measurement === "voltage";
   if (filter === "mppt_current") return variable.category === "MPPT" && variable.measurement === "current";
+  if (filter === "mppt_power") return variable.category === "MPPT" && variable.measurement === "power";
   if (filter === "string_voltage") return variable.category === "Strings" && variable.measurement === "voltage";
   if (filter === "string_current") return variable.category === "Strings" && variable.measurement === "current";
   if (filter === "l1") return /l1|phase a|fase a|r phase|phase r/.test(text);
@@ -147,7 +155,7 @@ export function DataTranslatorExplorer({ workbook, sourceSheetName }: { workbook
   const [categories, setCategories] = useState<VisualizationCategory[]>([]);
   const [measurements, setMeasurements] = useState<VisualizationMeasurement[]>([]);
   const [electricalMode, setElectricalMode] = useState<ElectricalMode>("DC");
-  const [dcFilters, setDcFilters] = useState<string[]>(["mppt", "dc_power"]);
+  const [dcFilters, setDcFilters] = useState<string[]>(["mppt_voltage", "mppt_current", "mppt_power"]);
   const [acFilters, setAcFilters] = useState<string[]>(["ac_voltage", "ac_current", "active_power"]);
   const [mpptIndex, setMpptIndex] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -160,12 +168,11 @@ export function DataTranslatorExplorer({ workbook, sourceSheetName }: { workbook
   const [savedViews, setSavedViews] = useState<SavedVisualizationView[]>([]);
   const [usesTemplateDefault, setUsesTemplateDefault] = useState(true);
 
-  const templateSelection = activeTemplate?.defaultSeries ?? [];
   const sideVariables = variables.filter((variable) => variableSide(variable) === electricalMode);
   const activeElectricalFilters = electricalMode === "DC" ? dcFilters : acFilters;
   const filterMatchedVariables = sideVariables.filter((variable) => !activeElectricalFilters.length || activeElectricalFilters.some((filter) => variableMatchesElectricalFilter(variable, filter)));
   const defaultElectricalSelection = filterMatchedVariables.filter((variable) => ["voltage", "current", "power", "frequency", "power_factor"].includes(variable.measurement)).map((variable) => variable.fieldId);
-  const effectiveSelected = (usesTemplateDefault ? (templateSelection.length ? templateSelection : defaultElectricalSelection) : selectedIds).filter((fieldId) =>
+  const effectiveSelected = (usesTemplateDefault ? defaultElectricalSelection : selectedIds).filter((fieldId) =>
     filterMatchedVariables.some((variable) => variable.fieldId === fieldId),
   );
   const selectedVariables = filterMatchedVariables.filter((variable) => effectiveSelected.includes(variable.fieldId));
@@ -180,9 +187,6 @@ export function DataTranslatorExplorer({ workbook, sourceSheetName }: { workbook
   const chartRows = sourceSheet
     ? buildTimeSeries({ sheet: sourceSheet, variables, selectedIds: effectiveSelected, interval, aggregation, dateStart, dateEnd, timeStart, timeEnd })
     : [];
-  const voltageVariables = selectedVariables.filter((variable) => variable.measurement === "voltage");
-  const currentVariables = selectedVariables.filter((variable) => variable.measurement === "current");
-  const powerVariables = selectedVariables.filter((variable) => variable.measurement === "power");
   const unitCount = new Set(selectedVariables.map((variable) => variable.unit)).size;
   const thirdUnitWarning = unitCount > 2;
   const estimatedWarning = interval === "1m";
@@ -299,7 +303,7 @@ export function DataTranslatorExplorer({ workbook, sourceSheetName }: { workbook
             </div>
             <div className="text-xs font-semibold text-muted-foreground">{electricalMode === "DC" ? "Filtros DC" : "Filtros AC"}</div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {(electricalMode === "DC" ? ["mppt", "string", "dc_power", "mppt_voltage", "mppt_current", "string_voltage", "string_current"] : ["l1", "l2", "l3", "ac_voltage", "ac_current", "active_power", "frequency", "power_factor", "reactive_power"]).map((filter) => (
+              {(electricalMode === "DC" ? ["mppt", "string", "mppt_voltage", "mppt_current", "mppt_power", "string_voltage", "string_current"] : ["l1", "l2", "l3", "ac_voltage", "ac_current", "active_power", "frequency", "power_factor", "reactive_power"]).map((filter) => (
                 <SelectablePill
                   key={filter}
                   selected={activeElectricalFilters.includes(filter)}
@@ -400,7 +404,7 @@ export function DataTranslatorExplorer({ workbook, sourceSheetName }: { workbook
             <div className="flex items-end gap-2 md:col-span-2">
               <Badge variant="secondary">{chartRows.length} timestamps</Badge>
               <Badge variant="secondary">{selectedVariables.length} series</Badge>
-              {thirdUnitWarning ? <Badge variant="destructive">Mas de dos unidades: considera normalizar o separar paneles</Badge> : null}
+              {thirdUnitWarning ? <Badge variant="secondary">Ejes por magnitud activos</Badge> : null}
             </div>
           </div>
 
@@ -410,41 +414,38 @@ export function DataTranslatorExplorer({ workbook, sourceSheetName }: { workbook
             </div>
           ) : null}
 
-          {[
-            { title: "Voltaje", unit: "V", items: voltageVariables },
-            { title: "Corriente", unit: "A", items: currentVariables },
-            { title: "Potencia", unit: electricalMode === "DC" ? "kW DC" : "kW / kVAr AC", items: powerVariables },
-          ].map((panel) => (
-            <div key={panel.title} className="rounded-lg border border-border p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <div className="font-semibold">{panel.title}</div>
-                <Badge variant="secondary">{panel.items.length} series</Badge>
-              </div>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartRows} syncId="solaris-electrical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="timestamp" minTickGap={40} />
-                    <YAxis label={{ value: panel.unit, angle: -90, position: "insideLeft" }} />
-                    <Tooltip />
-                    <Legend />
-                    {panel.items.map((variable) => (
-                      <Line
-                        key={variable.fieldId}
-                        type="monotone"
-                        dataKey={variable.fieldId}
-                        name={`${variable.displayName} (${variable.unit})`}
-                        stroke={variable.color}
-                        dot={false}
-                        connectNulls={false}
-                        strokeWidth={2}
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+          <div className="rounded-lg border border-border p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="font-semibold">Grafica {electricalMode}</div>
+              <Badge variant="secondary">{selectedVariables.length} series</Badge>
             </div>
-          ))}
+            <div className="h-[420px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartRows}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="timestamp" minTickGap={40} />
+                  <YAxis yAxisId="voltage" label={{ value: "V", angle: -90, position: "insideLeft" }} />
+                  <YAxis yAxisId="current" orientation="right" label={{ value: "A", angle: 90, position: "insideRight" }} />
+                  <YAxis yAxisId="power" orientation="right" hide />
+                  <Tooltip />
+                  <Legend />
+                  {selectedVariables.map((variable) => (
+                    <Line
+                      key={variable.fieldId}
+                      yAxisId={axisForMeasurement(variable.measurement)}
+                      type="monotone"
+                      dataKey={variable.fieldId}
+                      name={`${variable.displayName} (${variable.unit})`}
+                      stroke={variable.color}
+                      dot={false}
+                      connectNulls={false}
+                      strokeWidth={2}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full min-w-[900px] text-xs">

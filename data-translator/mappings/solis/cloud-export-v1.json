@@ -20,6 +20,7 @@
   },
   "mappings": [
     {
+      "source": "inverter_raw",
       "sourceHeader": "Timestamp",
       "normalizedSourceHeader": "timestamp",
       "targetField": "timestamp",
@@ -30,6 +31,7 @@
       "confidence": 0.96
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Inverter SN",
       "normalizedSourceHeader": "inverter-sn",
       "targetField": "inverterId",
@@ -40,6 +42,7 @@
       "confidence": 0.92
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "DC Voltage",
       "normalizedSourceHeader": "dc-voltage",
       "targetField": "voltageDc",
@@ -50,6 +53,7 @@
       "confidence": 0.91
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "DC Current",
       "normalizedSourceHeader": "dc-current",
       "targetField": "currentDc",
@@ -60,6 +64,7 @@
       "confidence": 0.91
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "DC Power",
       "normalizedSourceHeader": "dc-power",
       "targetField": "powerDc",
@@ -70,6 +75,7 @@
       "confidence": 0.9
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "AC Voltage",
       "normalizedSourceHeader": "ac-voltage",
       "targetField": "voltageAcL1",
@@ -80,6 +86,7 @@
       "confidence": 0.86
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "AC Current",
       "normalizedSourceHeader": "ac-current",
       "targetField": "currentAcL1",
@@ -90,6 +97,7 @@
       "confidence": 0.86
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Power",
       "normalizedSourceHeader": "power",
       "targetField": "activePowerKw",

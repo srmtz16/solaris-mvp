@@ -36,6 +36,7 @@ function cloneDraft(mapping: ManualMappingDraft): ManualMappingDraft {
 function semanticFromRule(sourceHeader: string, rule: ParameterizedRule, index: number, confidence: number): SemanticVariable {
   const definition = getFieldDefinition(rule.targetField);
   return {
+    source: "inverter_raw",
     sourceHeader,
     normalizedHeader: normalizeSemanticHeader(sourceHeader),
     displayName: definition?.label ?? rule.name,

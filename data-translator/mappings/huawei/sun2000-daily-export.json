@@ -20,6 +20,7 @@
   },
   "mappings": [
     {
+      "source": "inverter_raw",
       "sourceHeader": "Time",
       "normalizedSourceHeader": "time",
       "targetField": "timestamp",
@@ -30,6 +31,7 @@
       "confidence": 0.98
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Device Name",
       "normalizedSourceHeader": "device-name",
       "targetField": "inverterId",
@@ -40,6 +42,7 @@
       "confidence": 0.96
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "PV1 Voltage(V)",
       "normalizedSourceHeader": "pv1-voltage",
       "targetField": "voltageDc",
@@ -50,6 +53,7 @@
       "confidence": 0.94
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "PV1 Current(A)",
       "normalizedSourceHeader": "pv1-current",
       "targetField": "currentDc",
@@ -60,6 +64,7 @@
       "confidence": 0.94
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Total DC Power(kW)",
       "normalizedSourceHeader": "total-dc-power",
       "targetField": "powerDc",
@@ -70,6 +75,7 @@
       "confidence": 0.92
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Phase A Voltage(V)",
       "normalizedSourceHeader": "phase-a-voltage",
       "targetField": "voltageAcL1",
@@ -80,6 +86,7 @@
       "confidence": 0.9
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Phase A Current(A)",
       "normalizedSourceHeader": "phase-a-current",
       "targetField": "currentAcL1",
@@ -90,6 +97,7 @@
       "confidence": 0.9
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Active Power(kW)",
       "normalizedSourceHeader": "active-power",
       "targetField": "activePowerKw",
@@ -100,6 +108,7 @@
       "confidence": 0.96
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Temperature(C)",
       "normalizedSourceHeader": "temperature",
       "targetField": "inverterTemperatureC",

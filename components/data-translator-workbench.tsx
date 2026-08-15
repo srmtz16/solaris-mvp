@@ -9,11 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DataTranslatorExplorer } from "@/components/data-translator-explorer";
 import {
   applyTemplate,
+  applyMappingsToRows,
   buildFormatSignature,
   buildSheetPreview,
   compareRawProcessedColumns,
   createTemplateFromMappings,
   detectWorkbookMetadata,
+  downloadCsv,
   downloadJson,
   inferFileType,
   rankTemplates,
@@ -28,6 +30,8 @@ import { priorityLabels, statusLabels } from "@/data-translator/ontology/priorit
 import { applyParameterizedRule, createAuditEntry, proposeParameterizedRule, rescanWithRules } from "@/data-translator/rules/progressive-rules";
 import type {
   FileType,
+  ExternalEnrichmentRule,
+  MappingExecutionIssue,
   ManualMappingDraft,
   ParameterizedRule,
   RawProcessedColumnMatch,
@@ -188,6 +192,8 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const [selectedMappingId, setSelectedMappingId] = useState("");
   const [sheetRoles, setSheetRoles] = useState<Record<string, SheetRole>>({});
   const [rawProcessedMatches, setRawProcessedMatches] = useState<RawProcessedColumnMatch[]>([]);
+  const [externalEnrichmentRules, setExternalEnrichmentRules] = useState<ExternalEnrichmentRule[]>([]);
+  const [executionIssues, setExecutionIssues] = useState<MappingExecutionIssue[]>([]);
   const [learnedRules, setLearnedRules] = useState<ParameterizedRule[]>([]);
   const [ruleProposal, setRuleProposal] = useState<RuleProposal | null>(null);
   const [selectedRuleHeaders, setSelectedRuleHeaders] = useState<string[]>([]);
@@ -219,8 +225,10 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   const coverage = processedCount ? Math.round((selectedCount / processedCount) * 100) : 0;
   const selectedMapping = mappings.find((mapping) => mapping.id === selectedMappingId) ?? mappings[0] ?? null;
   const detectedMetadata = rawSheet && workbook ? detectWorkbookMetadata({ fileName: workbook.fileName, sheet: rawSheet }) : null;
-  const discardedRawColumns = rawProcessedMatches.filter((match) => !match.processedHeader || match.score < 45).length;
-  const lowConfidenceMatches = rawProcessedMatches.filter((match) => match.score < 70).length;
+  const derivedMatches = rawProcessedMatches.filter((match) => match.classification === "derived_from_raw").length;
+  const externalMatches = rawProcessedMatches.filter((match) => match.classification === "external_enrichment").length;
+  const reviewMatches = rawProcessedMatches.filter((match) => match.classification === "needs_review").length;
+  const timestampAlignedMatches = rawProcessedMatches.filter((match) => match.alignment === "timestamp").length;
   const visualizationWorkbook = useMemo(
     () =>
       workbook
@@ -334,6 +342,7 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
         const semantic = { ...mapping.semantic, ...patch };
         return {
           ...mapping,
+          source: semantic.source ?? mapping.source ?? "inverter_raw",
           targetField: semantic.fieldId,
           sourceUnit: semantic.sourceUnit ?? "",
           targetUnit: semantic.standardUnit ?? "",
@@ -349,12 +358,38 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
   function changeField(index: number, fieldId: string) {
     const current = mappings[index];
     const semantic = semanticFromField(current.sourceHeader, fieldId, {
+      source: current.semantic.source ?? current.source,
       sourceUnit: current.semantic.sourceUnit,
       targetUnit: current.semantic.standardUnit,
       confidence: Math.max(current.semantic.confidence, 0.78),
       required: current.semantic.required,
     });
     updateSemantic(index, { ...semantic, status: "confirmed" });
+  }
+
+  function confirmExternalEnrichment(match: RawProcessedColumnMatch) {
+    setExternalEnrichmentRules((current) => {
+      const exists = current.some(
+        (rule) =>
+          rule.manufacturer === manufacturer &&
+          rule.model === model &&
+          rule.normalizedProcessedHeader === match.normalizedProcessedHeader,
+      );
+      if (exists) return current;
+      return [
+        {
+          id: `${manufacturer}-${model}-${match.normalizedProcessedHeader}-${Date.now()}`.replace(/[^a-z0-9-]+/gi, "-"),
+          manufacturer,
+          model,
+          processedHeader: match.processedHeader,
+          normalizedProcessedHeader: match.normalizedProcessedHeader,
+          measurementType: match.measurementType,
+          electricalSide: match.electricalSide,
+          createdAt: new Date().toISOString(),
+        },
+        ...current,
+      ];
+    });
   }
 
   function openRuleProposal(index: number) {
@@ -470,6 +505,13 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
     setSelectedTemplateId(template.templateId);
     setSaveOpen(false);
     downloadJson(`${template.templateId}.json`, template);
+  }
+
+  function exportNormalizedDataset() {
+    if (!learningSheet || !mappings.length) return;
+    const dataset = applyMappingsToRows(learningSheet, mappings);
+    setExecutionIssues(dataset.issues);
+    downloadCsv(`${learningSheet.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "solaris"}-normalized.csv`, dataset);
   }
 
   async function loadTemplateFile(file: File) {
@@ -713,9 +755,10 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 ["Conflictos", conflictCount],
                 ["Familias", familyCount],
                 ["Hojas de análisis", analysisSheets.length],
-                ["Emparejadas RAW", rawProcessedMatches.filter((match) => match.processedHeader).length],
-                ["Descartadas RAW", discardedRawColumns],
-                ["Baja confianza", lowConfidenceMatches],
+                ["Derivadas de RAW", derivedMatches],
+                ["Enriquecimientos externos", externalMatches],
+                ["Requieren revision", reviewMatches],
+                ["Alineadas por tiempo", timestampAlignedMatches],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border bg-muted/30 p-4">
                   <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -869,17 +912,30 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                   <div key={match.id} className="border-t border-border p-3 text-sm first:border-t-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-medium">{match.rawHeader}</div>
-                        <div className="truncate text-xs text-muted-foreground">→ {match.processedHeader || "Descartada / sin match"}</div>
+                        <div className="truncate font-medium">{match.processedHeader}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {match.classification === "external_enrichment" ? "Variable externa sin RAW confiable" : `RAW: ${match.rawHeader}`}
+                        </div>
                       </div>
                       <Badge variant={match.score >= 70 ? "default" : match.score >= 45 ? "secondary" : "destructive"}>{match.score}%</Badge>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                      <span className="rounded bg-muted px-2 py-1">
+                        {match.classification === "derived_from_raw" ? "derivada de RAW" : match.classification === "external_enrichment" ? "enriquecimiento externo" : "revisar"}
+                      </span>
+                      <span className="rounded bg-muted px-2 py-1">{match.source}</span>
+                      <span className="rounded bg-muted px-2 py-1">{match.alignment === "timestamp" ? "alineada por tiempo" : "fallback por posicion"}</span>
                       <span className="rounded bg-muted px-2 py-1">{match.method}</span>
                       <span className="rounded bg-muted px-2 py-1">{match.electricalSide ?? "lado ?"}</span>
                       <span className="rounded bg-muted px-2 py-1">{match.measurementType}</span>
                       <span className="rounded bg-muted px-2 py-1">{match.entityType ?? "entidad ?"}</span>
                     </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{match.notes}</p>
+                    {match.classification !== "derived_from_raw" ? (
+                      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => confirmExternalEnrichment(match)}>
+                        Confirmar externa
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -888,6 +944,18 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 Carga o selecciona una hoja procesada para crear la relacion RAW original → procesado normalizado → campo SOLARIS.
               </div>
             )}
+            {externalEnrichmentRules.length ? (
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <div className="font-medium text-foreground">Enriquecimientos externos confirmados en esta sesion</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {externalEnrichmentRules.map((rule) => (
+                    <span key={rule.id} className="rounded bg-card px-2 py-1">
+                      {rule.processedHeader} - {rule.manufacturer} {rule.model}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {workbook && activeSheet ? (
               <>
                 <div className="grid gap-3">
@@ -963,6 +1031,10 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                   <Download className="size-4" />
                   Descargar plantilla
                 </Button>
+                <Button variant="outline" disabled={!learningSheet || !mappings.length} onClick={exportNormalizedDataset}>
+                  <Download className="size-4" />
+                  Exportar CSV normalizado
+                </Button>
                 <Button disabled={!mappings.length} onClick={() => setSaveOpen(true)}>
                   <Save className="size-4" />
                   Guardar plantilla SOLARIS
@@ -980,6 +1052,12 @@ export function DataTranslatorWorkbench({ officialTemplates }: { officialTemplat
                 <span className={cn("rounded-md px-2 py-1 text-xs font-medium", scopeStyles[selectedTemplate.scope ?? "official"])}>
                   {scopeLabels[selectedTemplate.scope ?? "official"]}
                 </span>
+              </div>
+            ) : null}
+
+            {executionIssues.length ? (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                {executionIssues.length} incidencias al normalizar. Primer caso: fila {executionIssues[0].rowIndex}, {executionIssues[0].targetField}: {executionIssues[0].message}
               </div>
             ) : null}
 

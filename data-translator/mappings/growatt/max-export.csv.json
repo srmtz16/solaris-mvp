@@ -20,6 +20,7 @@
   },
   "mappings": [
     {
+      "source": "inverter_raw",
       "sourceHeader": "Date Time",
       "normalizedSourceHeader": "date-time",
       "targetField": "timestamp",
@@ -30,6 +31,7 @@
       "confidence": 0.96
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Serial",
       "normalizedSourceHeader": "serial",
       "targetField": "inverterId",
@@ -40,6 +42,7 @@
       "confidence": 0.94
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "PV Voltage",
       "normalizedSourceHeader": "pv-voltage",
       "targetField": "voltageDc",
@@ -50,6 +53,7 @@
       "confidence": 0.91
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "PV Current",
       "normalizedSourceHeader": "pv-current",
       "targetField": "currentDc",
@@ -60,6 +64,7 @@
       "confidence": 0.91
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Input Power",
       "normalizedSourceHeader": "input-power",
       "targetField": "powerDc",
@@ -70,6 +75,7 @@
       "confidence": 0.89
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Grid Voltage",
       "normalizedSourceHeader": "grid-voltage",
       "targetField": "voltageAcL1",
@@ -80,6 +86,7 @@
       "confidence": 0.84
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Grid Current",
       "normalizedSourceHeader": "grid-current",
       "targetField": "currentAcL1",
@@ -90,6 +97,7 @@
       "confidence": 0.84
     },
     {
+      "source": "inverter_raw",
       "sourceHeader": "Output Power",
       "normalizedSourceHeader": "output-power",
       "targetField": "activePowerKw",

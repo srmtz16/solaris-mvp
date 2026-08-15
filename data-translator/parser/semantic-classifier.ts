@@ -29,6 +29,7 @@ function unknownSemantic(sourceHeader: string, position?: number): SemanticVaria
   const normalized = normalizeSemanticHeader(sourceHeader);
   const unit = extractUnit(sourceHeader);
   return {
+    source: "inverter_raw",
     sourceHeader,
     normalizedHeader: normalized,
     displayName: "Variable sin asignar",
@@ -55,6 +56,7 @@ export function semanticFromField(sourceHeader: string, fieldId: string, mapping
   const standardUnit = mapping?.targetUnit || definition.standardUnit || sourceUnit;
   const confidence = mapping?.confidence ?? 0.78;
   return {
+    source: mapping?.source ?? "inverter_raw",
     sourceHeader,
     normalizedHeader: normalizeSemanticHeader(sourceHeader),
     displayName: definition.label,
@@ -81,11 +83,11 @@ export function classifyHeader(sourceHeader: string, position?: number, sampleVa
     const unitBonus = pattern.sourceUnit ? 0.02 : 0;
     const positionBonus = position !== undefined && position <= 2 && ["timestamp", "serial_number", "inverter_id"].includes(pattern.fieldId) ? 0.03 : 0;
     const sampleBonus = sampleValue && /\d/.test(sampleValue) && ["power", "voltage", "current", "energy"].includes(pattern.family) ? 0.01 : 0;
-    return { ...pattern, confidence: Math.min(0.99, Number((pattern.confidence + unitBonus + positionBonus + sampleBonus).toFixed(2))) };
+    return { ...pattern, source: pattern.source ?? "inverter_raw", confidence: Math.min(0.99, Number((pattern.confidence + unitBonus + positionBonus + sampleBonus).toFixed(2))) };
   }
 
   const alias = matchSemanticAlias(sourceHeader);
-  if (alias) return alias;
+  if (alias) return { ...alias, source: alias.source ?? "inverter_raw" };
 
   const compact = compactHeader(sourceHeader);
   const direct: Record<string, string> = {
@@ -114,6 +116,7 @@ export function classifyHeader(sourceHeader: string, position?: number, sampleVa
 
 export function mappingFromSemantic(semantic: SemanticVariable): TranslatorMapping {
   return {
+    source: semantic.source ?? "inverter_raw",
     sourceHeader: semantic.sourceHeader,
     normalizedSourceHeader: semantic.normalizedHeader,
     targetField: semantic.fieldId,

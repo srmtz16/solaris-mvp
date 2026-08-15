@@ -32,6 +32,12 @@ export type TranslatorEntityType = "plant" | "inverter" | "mppt" | "string" | "p
 
 export type ColumnMatchMethod = "header" | "value_similarity" | "unit_pattern" | "manual" | "template";
 
+export type MappingSource = "inverter_raw" | "external_enrichment" | "computed";
+
+export type RawProcessedAlignment = "timestamp" | "position_fallback";
+
+export type ProcessedColumnClassification = "derived_from_raw" | "external_enrichment" | "needs_review";
+
 export type DetectedTranslatorMetadata = {
   manufacturer?: string;
   model?: string;
@@ -67,6 +73,7 @@ export type RuleStatus = "draft" | "validated" | "suggested";
 export type RuleCreatedBy = "system" | "user" | "ai";
 
 export type SemanticVariable = {
+  source?: MappingSource;
   sourceHeader: string;
   normalizedHeader: string;
   displayName: string;
@@ -186,6 +193,7 @@ export type TranslatorAuditEntry = {
 };
 
 export type TranslatorMapping = {
+  source: MappingSource;
   sourceHeader: string;
   normalizedSourceHeader: string;
   sourceHeaderRaw?: string;
@@ -255,6 +263,9 @@ export type TemplateMatch = {
 
 export type RawProcessedColumnMatch = {
   id: string;
+  classification: ProcessedColumnClassification;
+  source: MappingSource;
+  alignment: RawProcessedAlignment;
   rawHeader: string;
   processedHeader: string;
   normalizedRawHeader: string;
@@ -262,6 +273,7 @@ export type RawProcessedColumnMatch = {
   rawIndex: number;
   processedIndex: number;
   score: number;
+  bestRawScore: number;
   method: ColumnMatchMethod;
   unit?: string;
   electricalSide?: TemplateElectricalSide;
@@ -272,6 +284,32 @@ export type RawProcessedColumnMatch = {
   stringIndex?: number;
   phase?: "L1" | "L2" | "L3";
   notes: string;
+  reviewReason?: string;
+};
+
+export type ExternalEnrichmentRule = {
+  id: string;
+  manufacturer: string;
+  model: string;
+  processedHeader: string;
+  normalizedProcessedHeader: string;
+  measurementType: TranslatorMeasurementType;
+  electricalSide?: TemplateElectricalSide;
+  createdAt: string;
+};
+
+export type MappingExecutionIssue = {
+  rowIndex: number;
+  sourceHeader: string;
+  targetField: string;
+  severity: "warning" | "error";
+  message: string;
+};
+
+export type NormalizedDataset = {
+  headers: string[];
+  rows: Record<string, string | number | null>[];
+  issues: MappingExecutionIssue[];
 };
 
 export type ManualMappingDraft = TranslatorMapping & {

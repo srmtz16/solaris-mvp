@@ -7,12 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:electrical": "node --test --experimental-strip-types tests/electrical-analysis.test.mjs",
     "test:data-translator": "tsc --noEmit --pretty false"
   },
   "dependencies": {
     "@tailwindcss/postcss": "latest",
     "class-variance-authority": "latest",
     "clsx": "latest",
+    "jspdf": "^4.2.1",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",

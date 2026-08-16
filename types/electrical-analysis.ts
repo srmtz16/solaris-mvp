@@ -25,6 +25,7 @@ export type ImportedColumn = {
 };
 
 export type NormalizedReading = {
+  sourceFile: string;
   timestamp: string;
   deviceId: string;
   variableId: string;
@@ -42,6 +43,7 @@ export type NormalizedReading = {
 
 export type ImportedDataset = {
   fileName: string;
+  fileNames: string[];
   sheetName: string;
   headerRow: number;
   timezone: string;

@@ -7,6 +7,7 @@ import {
   detectAdaptivePatterns,
   filterReadings,
   importElectricalWorkbook,
+  mergeElectricalDatasets,
 } from "../lib/electrical-analysis.ts";
 
 function workbookFromRows(rows, sheetName = "historical data") {
@@ -65,4 +66,24 @@ test("detecta huecos y retroceso de contador sin límites normativos", () => {
   const patterns = detectAdaptivePatterns(filterReadings(dataset.readings, defaultFilters(dataset)), 5, "normal");
   assert.ok(patterns.some((pattern) => pattern.kind === "gap"));
   assert.ok(patterns.some((pattern) => pattern.kind === "counter_reset"));
+});
+
+test("combina archivos de varios días y deduplica periodos solapados", () => {
+  const first = importElectricalWorkbook(workbookFromRows(sampleRows(6)), "dia-1.xls");
+  const nextRows = sampleRows(6);
+  nextRows.slice(4).forEach((row, index) => { row[1] = new Date(Date.UTC(2026, 7, 4, 0, index * 5)); });
+  const second = importElectricalWorkbook(workbookFromRows(nextRows), "dia-2.xls");
+  const combined = mergeElectricalDatasets([first, second, first]);
+  assert.equal(combined.fileNames.length, 3);
+  assert.equal(combined.rowCount, 12);
+  assert.ok(new Date(combined.end).getTime() - new Date(combined.start).getTime() >= 24 * 60 * 60 * 1_000);
+  assert.ok(combined.issues.some((issue) => issue.id === "overlap"));
+});
+
+test("filtra cualquier unión de fases seleccionadas", () => {
+  const dataset = importElectricalWorkbook(workbookFromRows(sampleRows()), "growatt.xls");
+  const base = defaultFilters(dataset);
+  const phases = new Set(filterReadings(dataset.readings, { ...base, phases: ["A", "C"] }).map((reading) => reading.phase));
+  assert.deepEqual([...phases].sort(), ["A", "C"]);
+  assert.ok(filterReadings(dataset.readings, { ...base, phases: ["B"] }).every((reading) => reading.phase === "B"));
 });

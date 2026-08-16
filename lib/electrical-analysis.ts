@@ -126,7 +126,7 @@ export function importElectricalWorkbook(workbook: WorkbookLike, fileName: strin
       const rawValue = finite(row[column.index]);
       if (rawValue === null) return;
       readings.push({
-        timestamp: date.toISOString(), deviceId: String(row[deviceIndex] ?? metadata["datalog_sn"] ?? "Dispositivo"), variableId: column.targetId,
+        sourceFile: fileName, timestamp: date.toISOString(), deviceId: String(row[deviceIndex] ?? metadata["datalog_sn"] ?? "Dispositivo"), variableId: column.targetId,
         sourceHeader: column.sourceHeader, displayName: column.displayName, family: column.family, phase: column.phase,
         value: rawValue * column.multiplier, rawValue, unit: column.standardUnit, sourceUnit: column.sourceUnit,
         quality: retransmission ? "retransmission" : "valid", sourceRow: selected.headerRow + dataIndex + 2,
@@ -143,9 +143,43 @@ export function importElectricalWorkbook(workbook: WorkbookLike, fileName: strin
     ...(invalidRowCount ? [{ id: "invalid-dates", severity: "error" as const, message: `${invalidRowCount} filas no tienen una fecha válida.` }] : []),
   ];
   return {
-    fileName, sheetName: selected.name, headerRow: selected.headerRow + 1, timezone, metadata, columns, issues, readings,
+    fileName, fileNames: [fileName], sheetName: selected.name, headerRow: selected.headerRow + 1, timezone, metadata, columns, issues, readings,
     rowCount: dataRows.length, validRowCount: dataRows.length - invalidRowCount, retransmissionCount, invalidRowCount, intervalMinutes,
     start: sortedTimes.length ? new Date(sortedTimes[0]).toISOString() : "", end: sortedTimes.length ? new Date(sortedTimes.at(-1)!).toISOString() : "",
+  };
+}
+
+export function mergeElectricalDatasets(datasets: ImportedDataset[]): ImportedDataset {
+  if (!datasets.length) throw new Error("Selecciona al menos un archivo.");
+  if (datasets.length === 1) return datasets[0];
+  const first = datasets[0];
+  const readingMap = new Map<string, NormalizedReading>();
+  datasets.forEach((dataset) => dataset.readings.forEach((reading) => {
+    const key = `${reading.timestamp}|${reading.deviceId}|${reading.variableId}`;
+    const current = readingMap.get(key);
+    if (!current || (current.quality === "retransmission" && reading.quality === "valid")) readingMap.set(key, reading);
+  }));
+  const readings = [...readingMap.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const columnMap = new Map<string, ImportedColumn>();
+  datasets.flatMap((dataset) => dataset.columns).forEach((column) => { if (!columnMap.has(column.targetId)) columnMap.set(column.targetId, { ...column, index: columnMap.size }); });
+  const columns = [...columnMap.values()];
+  const rowMap = new Map<string, NormalizedReading["quality"]>();
+  readings.forEach((reading) => { const key = `${reading.timestamp}|${reading.deviceId}`; const current = rowMap.get(key); if (!current || current === "retransmission" && reading.quality === "valid") rowMap.set(key, reading.quality); });
+  const times = [...new Set(readings.map((reading) => new Date(reading.timestamp).getTime()))].sort((a, b) => a - b);
+  const intervals = times.slice(1).map((time, index) => (time - times[index]) / 60_000).filter((value) => value > .25 && value < 24 * 60);
+  const duplicateRows = datasets.reduce((sum, dataset) => sum + dataset.rowCount, 0) - rowMap.size;
+  const issues = [
+    ...datasets.flatMap((dataset) => dataset.issues.filter((issue) => issue.id !== "retransmissions")),
+    { id: "multi-file", severity: "info" as const, message: `${datasets.length} archivos combinados en una serie cronológica de ${rowMap.size} registros.` },
+    ...(duplicateRows > 0 ? [{ id: "overlap", severity: "info" as const, message: `${duplicateRows} registros solapados fueron deduplicados por fecha, dispositivo y variable.` }] : []),
+  ];
+  const retransmissionCount = [...rowMap.values()].filter((quality) => quality === "retransmission").length;
+  const fileNames = datasets.flatMap((dataset) => dataset.fileNames);
+  return {
+    ...first, fileName: `${fileNames.length} archivos Growatt`, fileNames, sheetName: [...new Set(datasets.map((dataset) => dataset.sheetName))].join(", "),
+    columns, readings, issues, rowCount: rowMap.size, validRowCount: rowMap.size, retransmissionCount,
+    invalidRowCount: datasets.reduce((sum, dataset) => sum + dataset.invalidRowCount, 0), intervalMinutes: Math.round(median(intervals) * 100) / 100,
+    start: times.length ? new Date(times[0]).toISOString() : "", end: times.length ? new Date(times.at(-1)!).toISOString() : "",
   };
 }
 
@@ -265,9 +299,9 @@ export function summarizeAnalysis(dataset: ImportedDataset, readings: Normalized
 export function seriesColor(index: number) { return PALETTE[index % PALETTE.length]; }
 
 export function exportReadingsCsv(readings: NormalizedReading[]) {
-  const header = ["timestamp", "device_id", "variable_id", "variable", "family", "phase", "value", "unit", "raw_value", "source_unit", "quality", "source_row"];
+  const header = ["source_file", "timestamp", "device_id", "variable_id", "variable", "family", "phase", "value", "unit", "raw_value", "source_unit", "quality", "source_row"];
   const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-  return "\ufeff" + [header, ...readings.map((reading) => [reading.timestamp, reading.deviceId, reading.variableId, reading.displayName, reading.family, reading.phase, reading.value, reading.unit, reading.rawValue, reading.sourceUnit, reading.quality, reading.sourceRow])].map((row) => row.map(escape).join(",")).join("\r\n");
+  return "\ufeff" + [header, ...readings.map((reading) => [reading.sourceFile, reading.timestamp, reading.deviceId, reading.variableId, reading.displayName, reading.family, reading.phase, reading.value, reading.unit, reading.rawValue, reading.sourceUnit, reading.quality, reading.sourceRow])].map((row) => row.map(escape).join(",")).join("\r\n");
 }
 
 export function toLocalInput(iso: string) { if (!iso) return ""; const date = new Date(iso); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); }

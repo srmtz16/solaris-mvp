@@ -35,6 +35,13 @@ test("detecta encabezado desplazado, convierte W a kW y conserva retransmisiones
   assert.equal(dataset.rowCount, 30);
   assert.equal(dataset.retransmissionCount, 1);
   assert.equal(dataset.intervalMinutes, 5);
+  assert.deepEqual(
+    dataset.columns.slice(0, 2).map(({ targetId, displayName, recognized }) => ({ targetId, displayName, recognized })),
+    [
+      { targetId: "serial_number", displayName: "Número de serie", recognized: true },
+      { targetId: "timestamp", displayName: "Fecha y hora", recognized: true },
+    ],
+  );
   const power = dataset.readings.find((reading) => reading.family === "power");
   assert.equal(power?.value, 30);
   assert.equal(power?.rawValue, 30_000);

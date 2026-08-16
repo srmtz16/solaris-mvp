@@ -38,6 +38,12 @@ function phaseFromHeader(header: string): ElectricalPhase {
 
 export function classifyColumn(sourceHeader: string, index: number): ImportedColumn {
   const h = normalize(sourceHeader);
+  if (/^datalog sn$|^data log sn$|^serial number$|^numero de serie$/.test(h)) {
+    return { index, sourceHeader, targetId: "serial_number", displayName: "Número de serie", family: "other", phase: "none", sourceUnit: "", standardUnit: "", multiplier: 1, recognized: true };
+  }
+  if (/^time$|^timestamp$|^fecha hora$|^fecha y hora$/.test(h)) {
+    return { index, sourceHeader, targetId: "timestamp", displayName: "Fecha y hora", family: "other", phase: "none", sourceUnit: "datetime", standardUnit: "datetime", multiplier: 1, recognized: true };
+  }
   let family: ElectricalFamily = "other";
   if (/voltage|voltaje/.test(h)) family = "voltage";
   else if (/current|corriente/.test(h)) family = "current";

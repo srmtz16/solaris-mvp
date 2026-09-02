@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  if (pathname.startsWith("/s/")) {
+  if (pathname.startsWith("/s/") || pathname.startsWith("/admin")) {
     return <>{children}</>;
   }
 

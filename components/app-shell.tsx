@@ -17,6 +17,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  if (pathname.startsWith("/s/")) {
+    return <>{children}</>;
+  }
+
   const sidebar = (
     <aside className="flex h-full w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col bg-slate-950 px-4 py-5 text-white">
       <div className="mb-8 flex items-center justify-between">

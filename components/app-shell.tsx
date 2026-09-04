@@ -2,38 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BarChart3,
-  Bot,
-  Building2,
-  FileText,
-  Gauge,
-  Languages,
-  LayoutDashboard,
-  Menu,
-  Settings,
-  Users,
-  X,
-} from "lucide-react";
+import { BarChart3, FileSpreadsheet, LayoutDashboard, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ThemeSelector } from "@/components/theme-selector";
 
 const navItems = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Instalaciones", href: "/instalaciones", icon: Building2 },
-  { label: "Centro de Monitoreo", href: "/centro-monitoreo", icon: Gauge },
-  { label: "Analisis IA", href: "/analisis-ia", icon: Bot },
-  { label: "Data Translator", href: "/data-translator", icon: Languages },
-  { label: "Clientes", href: "/clientes", icon: Users },
-  { label: "Reportes", href: "/reportes", icon: FileText },
-  { label: "Configuracion", href: "/configuracion", icon: Settings },
+  { label: "Análisis eléctrico", href: "/", icon: LayoutDashboard },
+  { label: "Mapeo avanzado", href: "/data-translator", icon: FileSpreadsheet },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  if (pathname.startsWith("/s/") || pathname.startsWith("/admin")) {
+    return <>{children}</>;
+  }
 
   const sidebar = (
     <aside className="flex h-full w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col bg-slate-950 px-4 py-5 text-white">
@@ -92,10 +78,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setOpen(true)} aria-label="Abrir menu">
             <Menu className="size-4" />
           </Button>
-          <div className="hidden text-sm text-muted-foreground lg:block">Portafolio solar operativo</div>
+          <div className="hidden text-sm text-muted-foreground lg:block">Análisis eléctrico local y auditable</div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted-foreground sm:block">Ultima sincronizacion: 10 jul 2026, 10:15</span>
-            <span className="rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success">Sistema normal</span>
+            <span className="hidden text-sm text-muted-foreground sm:block">Los archivos no salen del navegador</span>
+            <span className="rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success">Modo local</span>
             <ThemeSelector compact />
           </div>
         </header>
